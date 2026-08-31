@@ -113,6 +113,9 @@
         return arr[Math.floor(Math.random() * arr.length)];
     }
 
+    // =============================================
+    // 统一的发送消息函数 - 所有消息都禁止引用
+    // =============================================
     function _sendAsMessage(text, isSystem) {
         isSystem = isSystem || false;
         if (typeof addMessage === 'function') {
@@ -123,7 +126,8 @@
                 timestamp: new Date(),
                 type: isSystem ? 'system' : 'normal',
                 status: 'sent',
-                quotable: false
+                quotable: false,        // 禁止引用
+                noQuote: true           // 兼容不同的属性名
             });
             if (typeof playSound === 'function') playSound('send');
         } else {
