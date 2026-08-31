@@ -114,7 +114,7 @@
     }
 
     // =============================================
-    // 统一的发送消息函数 - 所有消息都禁止引用
+    // 发送消息（统一添加 quotable: false）
     // =============================================
     function _sendAsMessage(text, isSystem) {
         isSystem = isSystem || false;
@@ -126,8 +126,7 @@
                 timestamp: new Date(),
                 type: isSystem ? 'system' : 'normal',
                 status: 'sent',
-                quotable: false,        // 禁止引用
-                noQuote: true           // 兼容不同的属性名
+                quotable: false  // ← 禁止引用
             });
             if (typeof playSound === 'function') playSound('send');
         } else {
@@ -222,11 +221,13 @@
 
             var pName = _getPartnerName();
             var myName = _getMyName();
+            // 问卷回答消息 - quotable: false
             _sendAsMessage('📝 问卷回答：「' + question.q + '」\n→ ' + myName + '：' + answer, false);
 
             var cards = _getReplyCards();
             var replyMsg = _randomPick(cards) + '～';
             setTimeout(function() {
+                // 回复消息 - quotable: false
                 _sendAsMessage('💬 ' + pName + '：' + replyMsg, false);
             }, 1500 + Math.random() * 3000);
 
@@ -714,6 +715,7 @@
         _setQuestionnaires(list);
 
         var pName = _getPartnerName();
+        // 问卷发送提示 - quotable: false
         _sendAsMessage('📋 问卷「' + q.title + '」已发送，' + pName + ' 会在 ' + delayMinutes + ' 分钟内完成作答', true);
 
         var qId = q.id;
@@ -759,6 +761,7 @@
                 finalQ.replied = true;
                 finalQ.answers = answers;
                 _setQuestionnaires(finalList);
+                // 问卷完成提示 - quotable: false
                 _sendAsMessage('✅ ' + pName + ' 已完成问卷「' + finalQ.title + '」的作答！', true);
                 var manager = document.getElementById('dream-manager-modal');
                 if (manager) {
@@ -885,5 +888,5 @@
         }
     };
 
-    console.log('[梦向问卷] 完整系统已加载（24小时随机弹出，概率40%）。');
+    console.log('[梦向问卷] 完整系统已加载（24小时随机弹出，概率40%，所有消息禁止引用）。');
 })();
