@@ -1,4 +1,4 @@
-// moments.js - 朋友圈功能（完整版 · 字卡动态版 · 群成员主动互动 + 对话链评论 · 头像跟随自定义 · 纯URL）
+// moments.js - 朋友圈功能（完整版 · 字卡动态版 · 群成员主动互动 + 对话链评论 · 头像跟随自定义 · 支持礼物卡图片）
 (function() {
     'use strict';
 
@@ -442,7 +442,6 @@
         _setData(data);
     }
 
-    // 新增评论：初始 thread 为空数组
     function _addComment(postId, author, text, memberName) {
         var data = _getData();
         var post = data.posts.find(function(p) { return p.id === postId; });
@@ -452,7 +451,7 @@
             author: author,
             text: text.trim(),
             timestamp: new Date().toISOString(),
-            thread: [],      // 对话链
+            thread: [],
             memberName: memberName || ''
         };
         post.comments.push(comment);
@@ -460,9 +459,6 @@
         return comment;
     }
 
-    // 往评论的对话链里追加一条回复
-    // author: 'me' | 'partner'
-    // memberName: 群成员名（author='partner'时使用）
     function _appendCommentThread(postId, commentId, author, text, memberName) {
         var data = _getData();
         var post = data.posts.find(function(p) { return p.id === postId; });
@@ -964,7 +960,7 @@
     }
 
     // =============================================
-    // 回复弹窗（现在向对话链追加，不再覆盖）
+    // 回复弹窗
     // =============================================
     function showReplyModal(postId, commentId) {
         var old = document.getElementById('reply-modal');
@@ -1004,7 +1000,6 @@
             var text = document.getElementById('reply-text').value.trim();
             if (!text) { _notify('请输入回复内容', 'warning'); return; }
 
-            // 1) 把"我的回复"追加到对话链
             _appendCommentThread(postId, commentId, 'me', text, '');
 
             close();
@@ -1013,7 +1008,6 @@
             if (container && activeTab) renderTab(activeTab.dataset.tab, container);
             _notify('回复已发送', 'success');
 
-            // 2) 如果回复的对象是群成员，且在"我"的帖子下，群成员会再回复（追加到同一条对话链）
             if (targetComment && targetComment.author === 'partner' && post && post.author === 'me') {
                 var replierName = targetComment.memberName || '群成员';
                 var delayMs = REPLY_DELAY_MIN + Math.random() * (REPLY_DELAY_MAX - REPLY_DELAY_MIN);
@@ -1024,7 +1018,6 @@
                     var freshComment = freshPost.comments.find(function(c) { return c.id === commentId; });
                     if (!freshComment) return;
                     var replyText = _generateRandomReply();
-                    // 追加到对话链
                     _appendCommentThread(postId, commentId, 'partner', replyText, replierName);
                     if (typeof showNotification === 'function') {
                         showNotification('💬 ' + replierName + ' 回复了你', 'info', 3000);
@@ -1082,13 +1075,33 @@
             var time = formatTime(post.timestamp);
             var commentCount = post.comments.length;
 
+            // ===== 正文区：礼物卡 vs 普通文字 =====
+            var bodyHtml;
+            if (post.isGift) {
+                var giftVisual;
+                if (post.giftImage) {
+                    giftVisual = '<img src="' + _esc(post.giftImage) + '" style="width:72px;height:72px;object-fit:cover;border-radius:14px;margin-bottom:8px;">';
+                } else {
+                    giftVisual = '<div style="font-size:56px;line-height:1;margin-bottom:8px;">' + _esc(post.giftEmoji || '🎁') + '</div>';
+                }
+                bodyHtml =
+                    '<div style="display:flex;flex-direction:column;align-items:center;padding:10px 0;">' +
+                        giftVisual +
+                        '<div style="font-size:15px;font-weight:600;color:var(--text-primary);margin-bottom:6px;">' + _esc(post.giftName || '礼物') + '</div>' +
+                        (post.giftNote ? '<div style="font-size:13px;color:var(--accent-color);margin-bottom:6px;font-style:italic;">「' + _esc(post.giftNote) + '」</div>' : '') +
+                        (post.giftText ? '<div style="font-size:13px;color:var(--text-secondary);line-height:1.6;text-align:center;padding:0 8px;">' + _esc(post.giftText) + '</div>' : '') +
+                    '</div>';
+            } else {
+                bodyHtml = _esc(post.text);
+            }
+
             html += '<div class="moments-post" data-id="' + post.id + '" style="background:rgba(var(--secondary-bg-rgb,255,255,255),0.85);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:16px;padding:16px 16px 12px;margin-bottom:14px;border:1px solid rgba(var(--border-color-rgb,0,0,0),0.06);box-shadow:0 1px 4px rgba(0,0,0,0.04);">' +
                 '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">' +
                     '<span style="font-size:20px;display:flex;align-items:center;justify-content:center;width:36px;height:36px;flex-shrink:0;">' + avatarHtml + '</span>' +
                     '<span style="font-weight:600;color:var(--text-primary);font-size:15px;">' + _esc(name) + '</span>' +
                     '<span style="font-size:12px;color:var(--text-secondary);margin-left:auto;">' + time + '</span>' +
                 '</div>' +
-                '<div style="font-size:16px;color:var(--text-primary);margin:4px 0 12px;word-wrap:break-word;line-height:1.7;padding-left:2px;">' + _esc(post.text) + '</div>' +
+                '<div style="font-size:16px;color:var(--text-primary);margin:4px 0 12px;word-wrap:break-word;line-height:1.7;padding-left:2px;">' + bodyHtml + '</div>' +
                 '<div style="display:flex;gap:20px;align-items:center;border-top:1px solid rgba(var(--border-color-rgb,0,0,0),0.06);padding-top:10px;">' +
                     '<button class="moments-like-btn" data-id="' + post.id + '" style="background:none;border:none;color:' + (post.likedByMe ? 'var(--accent-color)' : 'var(--text-secondary)') + ';font-size:14px;cursor:pointer;padding:4px 8px;border-radius:12px;display:flex;align-items:center;gap:4px;' + (post.likedByMe ? 'background:rgba(var(--accent-color-rgb),0.08);' : '') + '">' +
                         (post.likedByMe ? '❤️' : '🤍') + ' <span>' + post.likes + '</span>' +
@@ -1098,7 +1111,7 @@
                     '</button>' +
                     (isMe ? '<button class="moments-delete-btn" data-id="' + post.id + '" style="background:none;border:none;color:#ff6b6b;font-size:13px;cursor:pointer;padding:4px 8px;border-radius:12px;margin-left:auto;">🗑️</button>' : '') +
                 '</div>' +
-                (post.comments.length > 0 ? '<div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(var(--border-color-rgb,0,0,0),0.06);">' : '');
+                (post.comments.length > 0 ? '<div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(var(--border-color-rgb),0,0,0.06);">' : '');
 
             for (var ci = 0; ci < post.comments.length; ci++) {
                 var c = post.comments[ci];
@@ -1121,7 +1134,6 @@
                         '<button class="moments-reply-to-comment" data-postid="' + post.id + '" data-commentid="' + c.id + '" style="background:none;border:none;color:var(--accent-color);font-size:11px;cursor:pointer;padding:0 4px;opacity:0.6;">回复</button>' +
                     '</div>';
 
-                // === 对话链：按顺序全部渲染（不再覆盖）===
                 var thread = c.thread || [];
                 for (var ti = 0; ti < thread.length; ti++) {
                     var t = thread[ti];
@@ -1291,7 +1303,6 @@
             if (container && activeTab) renderTab(activeTab.dataset.tab, container);
             _notify('评论已发送', 'success');
 
-            // 群成员发的帖子：群成员回复我的评论（追加到对话链）
             if (post.author === 'partner') {
                 var delay = Math.random() * 300000;
                 setTimeout(function() {
@@ -1442,11 +1453,21 @@
         });
     };
 
+    // =============================================
+    // 给心意集市调用：送礼后刷新朋友圈
+    // =============================================
+    window.__momentsRefresh = function(tab, container) {
+        if (!container) return;
+        try {
+            renderTab(tab || 'me', container);
+        } catch(e) { console.warn('__momentsRefresh 失败', e); }
+    };
+
     window.showAvatarSettings = showAvatarSettings;
     window.editMyInfo = editMyInfo;
     window.editMember = editMember;
     window.addMember = addMember;
     window.removeMember = removeMember;
 
-    console.log('[朋友圈] 模块已加载（对话链评论 · 不再覆盖 · 头像跟随自定义）');
+    console.log('[朋友圈] 模块已加载（礼物卡支持图片 · __momentsRefresh 已暴露）');
 })();
