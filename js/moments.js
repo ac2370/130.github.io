@@ -1,4 +1,4 @@
-// moments.js - 朋友圈功能（完整版 · 字卡动态版 · 群成员主动互动 + 评论持续回复 · 头像跟随自定义 · 纯URL）
+// moments.js - 朋友圈功能（完整版 · 字卡动态版 · 群成员主动互动 + 对话链评论 · 头像跟随自定义 · 纯URL）
 (function() {
     'use strict';
 
@@ -8,7 +8,7 @@
 
     var AUTO_INTERACT_PROBABILITY = 0.6;
     var REPLY_DELAY_MIN = 30 * 1000;
-    var REPLY_DELAY_MAX = 5 * 60 * 1000;
+    var REPLY_DELAY_MAX = 10 * 60 * 1000;
 
     // =============================================
     // 字卡数据库
@@ -258,11 +258,6 @@
         localStorage.setItem('moments_group_members', JSON.stringify(members));
     }
 
-    function _getPartnerName() {
-        var members = _getGroupMembers();
-        if (members.length > 0) return members[0].name;
-        return '群成员';
-    }
     function _getMyName() {
         return (typeof settings !== 'undefined' && settings.myName) ? settings.myName : '我';
     }
@@ -291,9 +286,6 @@
     function _setCoverImage(data) { localStorage.setItem(COVER_KEY, data); }
     function _clearCoverImage() { localStorage.removeItem(COVER_KEY); }
 
-    // =============================================
-    // 头像与昵称管理
-    // =============================================
     var MY_NAME_KEY = 'moments_my_name';
     var MY_AVATAR_KEY = 'moments_my_avatar';
 
@@ -303,7 +295,6 @@
     function _setMyNameSetting(name) {
         localStorage.setItem(MY_NAME_KEY, name);
     }
-
     function _getMyAvatarSetting() {
         try { return localStorage.getItem(MY_AVATAR_KEY) || ''; } catch(e) { return ''; }
     }
@@ -353,6 +344,13 @@
                 if (comments[ci].memberName === oldName) {
                     comments[ci].memberName = newName;
                     updated = true;
+                }
+                var thread = comments[ci].thread || [];
+                for (var ti = 0; ti < thread.length; ti++) {
+                    if (thread[ti].memberName === oldName) {
+                        thread[ti].memberName = newName;
+                        updated = true;
+                    }
                 }
             }
         }
@@ -444,6 +442,7 @@
         _setData(data);
     }
 
+    // 新增评论：初始 thread 为空数组
     function _addComment(postId, author, text, memberName) {
         var data = _getData();
         var post = data.posts.find(function(p) { return p.id === postId; });
@@ -453,8 +452,7 @@
             author: author,
             text: text.trim(),
             timestamp: new Date().toISOString(),
-            reply: null,
-            replied: false,
+            thread: [],      // 对话链
             memberName: memberName || ''
         };
         post.comments.push(comment);
@@ -462,38 +460,26 @@
         return comment;
     }
 
-    function _addReplyToComment(postId, commentId, replyText) {
+    // 往评论的对话链里追加一条回复
+    // author: 'me' | 'partner'
+    // memberName: 群成员名（author='partner'时使用）
+    function _appendCommentThread(postId, commentId, author, text, memberName) {
         var data = _getData();
         var post = data.posts.find(function(p) { return p.id === postId; });
-        if (!post) return;
+        if (!post) return null;
         var comment = post.comments.find(function(c) { return c.id === commentId; });
-        if (!comment) return;
-        comment.reply = {
-            text: replyText,
-            timestamp: new Date().toISOString()
+        if (!comment) return null;
+        if (!comment.thread) comment.thread = [];
+        var entry = {
+            id: _generateId(),
+            author: author,
+            text: text.trim(),
+            timestamp: new Date().toISOString(),
+            memberName: memberName || ''
         };
-        comment.replied = true;
+        comment.thread.push(entry);
         _setData(data);
-    }
-
-    // 生成小头像 HTML（跟随成员自定义头像）
-    function _avatarHtmlForMember(memberName, size) {
-        size = size || 18;
-        var avatarUrl = _getMemberAvatar(memberName);
-        if (avatarUrl) {
-            return '<img src="' + _esc(avatarUrl) + '" style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;object-fit:cover;vertical-align:middle;display:inline-block;border:1px solid rgba(var(--border-color-rgb),0.15);">';
-        }
-        return '<span style="display:inline-flex;align-items:center;justify-content:center;width:' + size + 'px;height:' + size + 'px;border-radius:50%;background:rgba(var(--accent-color-rgb),0.12);font-size:' + Math.round(size * 0.6) + 'px;vertical-align:middle;">🌸</span>';
-    }
-
-    // 生成"我"的小头像 HTML
-    function _avatarHtmlForMe(size) {
-        size = size || 18;
-        var avatarUrl = _getMyAvatarSetting();
-        if (avatarUrl) {
-            return '<img src="' + _esc(avatarUrl) + '" style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;object-fit:cover;vertical-align:middle;display:inline-block;border:1px solid rgba(var(--border-color-rgb),0.15);">';
-        }
-        return '<span style="display:inline-flex;align-items:center;justify-content:center;width:' + size + 'px;height:' + size + 'px;border-radius:50%;background:rgba(var(--accent-color-rgb),0.12);font-size:' + Math.round(size * 0.6) + 'px;vertical-align:middle;">👤</span>';
+        return entry;
     }
 
     // =============================================
@@ -538,8 +524,7 @@
                     memberName: cm.name,
                     text: commentText,
                     timestamp: new Date().toISOString(),
-                    reply: null,
-                    replied: false
+                    thread: []
                 });
             }
             _setData(freshData);
@@ -599,8 +584,26 @@
         return date.toLocaleDateString([], {month:'short', day:'numeric'}) + ' ' + date.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
     }
 
+    function _avatarHtmlForMember(memberName, size) {
+        size = size || 18;
+        var avatarUrl = _getMemberAvatar(memberName);
+        if (avatarUrl) {
+            return '<img src="' + _esc(avatarUrl) + '" style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;object-fit:cover;vertical-align:middle;display:inline-block;border:1px solid rgba(var(--border-color-rgb),0.15);flex-shrink:0;">';
+        }
+        return '<span style="display:inline-flex;align-items:center;justify-content:center;width:' + size + 'px;height:' + size + 'px;border-radius:50%;background:rgba(var(--accent-color-rgb),0.12);font-size:' + Math.round(size * 0.6) + 'px;vertical-align:middle;flex-shrink:0;">🌸</span>';
+    }
+
+    function _avatarHtmlForMe(size) {
+        size = size || 18;
+        var avatarUrl = _getMyAvatarSetting();
+        if (avatarUrl) {
+            return '<img src="' + _esc(avatarUrl) + '" style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;object-fit:cover;vertical-align:middle;display:inline-block;border:1px solid rgba(var(--border-color-rgb),0.15);flex-shrink:0;">';
+        }
+        return '<span style="display:inline-flex;align-items:center;justify-content:center;width:' + size + 'px;height:' + size + 'px;border-radius:50%;background:rgba(var(--accent-color-rgb),0.12);font-size:' + Math.round(size * 0.6) + 'px;vertical-align:middle;flex-shrink:0;">👤</span>';
+    }
+
     // =============================================
-    // 封面设置弹窗
+    // 封面设置
     // =============================================
     function showCoverSettings() {
         var old = document.getElementById('cover-settings-modal');
@@ -641,10 +644,7 @@
 
         document.getElementById('cover-url-apply').onclick = function() {
             var url = document.getElementById('cover-url-input').value.trim();
-            if (!url) {
-                _notify('请输入图片URL', 'warning');
-                return;
-            }
+            if (!url) { _notify('请输入图片URL', 'warning'); return; }
             _setCoverImage(url);
             var coverEl = document.getElementById('moments-cover');
             if (coverEl) {
@@ -682,7 +682,7 @@
     }
 
     // =============================================
-    // 头像与昵称管理面板
+    // 头像与昵称管理
     // =============================================
     function showAvatarSettings() {
         var old = document.getElementById('avatar-settings-modal');
@@ -964,7 +964,7 @@
     }
 
     // =============================================
-    // 回复弹窗
+    // 回复弹窗（现在向对话链追加，不再覆盖）
     // =============================================
     function showReplyModal(postId, commentId) {
         var old = document.getElementById('reply-modal');
@@ -1003,13 +1003,17 @@
         document.getElementById('reply-submit').onclick = function() {
             var text = document.getElementById('reply-text').value.trim();
             if (!text) { _notify('请输入回复内容', 'warning'); return; }
-            _addReplyToComment(postId, commentId, text);
+
+            // 1) 把"我的回复"追加到对话链
+            _appendCommentThread(postId, commentId, 'me', text, '');
+
             close();
             var container = document.getElementById('moments-content');
             var activeTab = document.querySelector('.moments-tab.active');
             if (container && activeTab) renderTab(activeTab.dataset.tab, container);
             _notify('回复已发送', 'success');
 
+            // 2) 如果回复的对象是群成员，且在"我"的帖子下，群成员会再回复（追加到同一条对话链）
             if (targetComment && targetComment.author === 'partner' && post && post.author === 'me') {
                 var replierName = targetComment.memberName || '群成员';
                 var delayMs = REPLY_DELAY_MIN + Math.random() * (REPLY_DELAY_MAX - REPLY_DELAY_MIN);
@@ -1020,12 +1024,8 @@
                     var freshComment = freshPost.comments.find(function(c) { return c.id === commentId; });
                     if (!freshComment) return;
                     var replyText = _generateRandomReply();
-                    freshComment.reply = {
-                        text: replyText,
-                        timestamp: new Date().toISOString()
-                    };
-                    freshComment.replied = true;
-                    _setData(freshData);
+                    // 追加到对话链
+                    _appendCommentThread(postId, commentId, 'partner', replyText, replierName);
                     if (typeof showNotification === 'function') {
                         showNotification('💬 ' + replierName + ' 回复了你', 'info', 3000);
                     }
@@ -1103,7 +1103,6 @@
             for (var ci = 0; ci < post.comments.length; ci++) {
                 var c = post.comments[ci];
                 var cName, cAvatarHtml;
-
                 if (c.author === 'me') {
                     cName = _getMyNameSetting();
                     cAvatarHtml = _avatarHtmlForMe(18);
@@ -1122,24 +1121,25 @@
                         '<button class="moments-reply-to-comment" data-postid="' + post.id + '" data-commentid="' + c.id + '" style="background:none;border:none;color:var(--accent-color);font-size:11px;cursor:pointer;padding:0 4px;opacity:0.6;">回复</button>' +
                     '</div>';
 
-                if (c.reply) {
-                    // 根据被回复的评论作者，决定 reply 显示谁的头像和名字
-                    var replyIsMe = (c.author === 'me');
-                    var replyName, replyAvatarHtml;
-                    if (replyIsMe) {
-                        // 我评论了群成员的帖子，群成员回复了我 → 显示群成员（帖子作者）
-                        replyName = post.memberName || '群成员';
-                        replyAvatarHtml = _avatarHtmlForMember(replyName, 18);
+                // === 对话链：按顺序全部渲染（不再覆盖）===
+                var thread = c.thread || [];
+                for (var ti = 0; ti < thread.length; ti++) {
+                    var t = thread[ti];
+                    var tName, tAvatarHtml;
+                    if (t.author === 'me') {
+                        tName = _getMyNameSetting();
+                        tAvatarHtml = _avatarHtmlForMe(18);
                     } else {
-                        // 群成员评论了我的帖子，我回复了 → 显示"我"
-                        replyName = _getMyNameSetting();
-                        replyAvatarHtml = _avatarHtmlForMe(18);
+                        tName = t.memberName || c.memberName || post.memberName || '群成员';
+                        tAvatarHtml = _avatarHtmlForMember(tName, 18);
                     }
-                    html += '<div style="margin-left:24px;margin-top:4px;padding:6px 12px;background:rgba(var(--accent-color-rgb),0.05);border-radius:8px;border-left:2px solid rgba(var(--accent-color-rgb),0.2);font-size:13px;color:var(--text-secondary);display:flex;align-items:flex-start;gap:6px;flex-wrap:wrap;">' +
-                        replyAvatarHtml +
-                        '<span style="font-weight:500;color:var(--text-primary);">' + _esc(replyName) + '</span> ' +
-                        '<span style="color:var(--text-primary);">' + _esc(c.reply.text) + '</span> ' +
-                        '<span style="font-size:10px;color:var(--text-secondary);">' + formatTime(c.reply.timestamp) + '</span>' +
+                    html += '<div style="margin-left:24px;margin-top:4px;padding:6px 12px;background:rgba(var(--accent-color-rgb),0.05);border-radius:8px;border-left:2px solid rgba(var(--accent-color-rgb),0.2);font-size:13px;color:var(--text-secondary);">' +
+                        '<div style="display:flex;align-items:flex-start;gap:6px;flex-wrap:wrap;">' +
+                            tAvatarHtml +
+                            '<span style="font-weight:500;color:var(--text-primary);">' + _esc(tName) + '</span> ' +
+                            '<span style="color:var(--text-primary);">' + _esc(t.text) + '</span> ' +
+                            '<span style="font-size:10px;color:var(--text-secondary);">' + formatTime(t.timestamp) + '</span>' +
+                        '</div>' +
                         '</div>';
                 }
                 html += '</div>';
@@ -1291,6 +1291,7 @@
             if (container && activeTab) renderTab(activeTab.dataset.tab, container);
             _notify('评论已发送', 'success');
 
+            // 群成员发的帖子：群成员回复我的评论（追加到对话链）
             if (post.author === 'partner') {
                 var delay = Math.random() * 300000;
                 setTimeout(function() {
@@ -1301,10 +1302,11 @@
                     }
                     if (!freshPost) return;
                     var latestComment = freshPost.comments[freshPost.comments.length - 1];
-                    if (latestComment && latestComment.author === 'me' && !latestComment.replied) {
+                    if (latestComment && latestComment.author === 'me' && (!latestComment.thread || latestComment.thread.length === 0)) {
                         var replyText = _generateRandomReply();
-                        _addReplyToComment(postId, latestComment.id, replyText);
-                        _notify('💬 ' + (freshPost.memberName || '群成员') + ' 回复了你的评论', 'info', 3000);
+                        var partnerName = freshPost.memberName || '群成员';
+                        _appendCommentThread(postId, latestComment.id, 'partner', replyText, partnerName);
+                        _notify('💬 ' + partnerName + ' 回复了你的评论', 'info', 3000);
                         var container2 = document.getElementById('moments-content');
                         var activeTab2 = document.querySelector('.moments-tab.active');
                         if (container2 && activeTab2) renderTab(activeTab2.dataset.tab, container2);
@@ -1315,7 +1317,7 @@
     }
 
     // =============================================
-    // 朋友圈主界面（已删除封面右上角提示条）
+    // 朋友圈主界面
     // =============================================
     window.openMoments = function() {
         _forceGeneratePartnerPosts();
@@ -1344,8 +1346,6 @@
             '<div style="font-size:17px;font-weight:300;letter-spacing:2px;font-style:italic;line-height:1.5;">誓言是一场有时差的雨。</div>' +
             '<div style="font-size:11px;opacity:0.6;margin-top:2px;letter-spacing:1.5px;font-weight:300;">— Vow is a rain with time difference.</div>';
         coverSection.appendChild(coverText);
-
-        // ❌ 已删除右上角"📷 更换封面"提示条
 
         coverSection.addEventListener('click', function() {
             showCoverSettings();
@@ -1448,5 +1448,5 @@
     window.addMember = addMember;
     window.removeMember = removeMember;
 
-    console.log('[朋友圈] 模块已加载（头像跟随自定义 · 无封面提示条 · 评论持续回复）');
+    console.log('[朋友圈] 模块已加载（对话链评论 · 不再覆盖 · 头像跟随自定义）');
 })();
