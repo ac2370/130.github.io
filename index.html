@@ -1383,6 +1383,13 @@
                     <div class="settings-item" id="stats-function">
                         <i class="fas fa-chart-bar"></i><span>消息统计</span>
                     </div>
+                    <div class="settings-item" id="decision-function">
+                        <i class="fas fa-balance-scale"></i> 
+                        <span>抉择</span> 
+                    </div>
+                    <div class="settings-item" id="fortune-lenormand-function" style="position:relative;">
+                        <i class="fas fa-star-and-crescent"></i><span>运势 · 占卜</span>
+                    </div>
                     <div class="settings-item" id="anniversary-function">
                         <i class="fas fa-heart"></i><span>重要日</span>
                     </div>
@@ -1876,6 +1883,17 @@
     <input type="file" id="background-input" class="file-input" accept="image/*">
     <input type="file" id="import-input" class="file-input" accept=".json">
     <input type="file" id="sticker-file-input" class="file-input" accept="image/*" multiple>
+
+    <div class="coin-toss-overlay" id="coin-toss-overlay">
+        <div class="coin-container">
+            <div class="coin" id="animated-coin">
+                <div class="coin-face coin-front">
+                    <div class="coin-text-main">是</div>
+                    <div class="coin-text-sub">YES</div>
+                </div>
+                <div class="coin-face coin-back">
+                    <div class="coin-text-main">否</div>
+                    <div class="coin-text-sub">NO</div>
                 </div>
             </div>
         </div>
@@ -2029,6 +2047,23 @@
         </div>
     </div>
 
+    <div class="modal" id="decision-menu-modal">
+        <div class="modal-content">
+            <div class="modal-title">
+                <i class="fas fa-balance-scale"></i><span>抉择助手</span>
+            </div>
+            <div class="decision-menu-grid">
+                <div class="decision-option-card" id="open-coin-toss">
+                    <i class="fas fa-coins"></i>
+                    <h3>抛硬币</h3>
+                    <p>是 / 否 二元选择</p>
+                </div>
+                <div class="decision-option-card" id="open-wheel">
+                    <i class="fas fa-magic"></i>
+                    <h3>随机抽签</h3>
+                    <p>自定义选项随机抽取</p>
+                </div>
+            </div>
             <div class="modal-buttons">
                 <button class="modal-btn modal-btn-secondary" id="close-decision-menu">关闭</button>
             </div>
