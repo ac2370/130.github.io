@@ -1,4 +1,4 @@
-// heart-market.js - 心意集市（双钱包 · 自定义商品 · 送礼只走聊天）
+// heart-market.js - 心意集市（内置心意柜 · 送礼只走聊天）
 (function() {
     'use strict';
 
@@ -23,11 +23,30 @@
         return [];
     }
 
+    function _getMemberAvatar(name) {
+        var members = _getGroupMembers();
+        for (var i = 0; i < members.length; i++) {
+            if (members[i].name === name) return members[i].avatar || '';
+        }
+        return '';
+    }
+
+    function _getMyAvatar() {
+        try { return localStorage.getItem('moments_my_avatar') || ''; } catch(e) { return ''; }
+    }
+
+    function _getMyName() {
+        try {
+            return localStorage.getItem('moments_my_name') ||
+                   ((typeof settings !== 'undefined' && settings.myName) ? settings.myName : '我');
+        } catch(e) { return '我'; }
+    }
+
     // =============================================
     // 字卡库
     // =============================================
     var CARD_DB = [
-        "在呢","我在","我来了","来喽","嗯嗯","嗯","好哦😜","好的✅","没问题","当然！","收到～","稍等⏳","马上！","好了","再见👋","好久不见","节日快乐","晚安🌙","早安☀️","午安","待会儿见","明天见","回来了","忙完啦","有空的！","随时都在","保持联系","我在听👂","聊聊天吧","谢谢你🥰","不客气","抱歉","对不起","没关系","没事的","还好吧","原来是这样","我知道了","我不清楚","我想想🤔","原来你喜欢这种......","我喜欢这样","因为我在生气。","才没生气。","我生气了","别生气了 好不好🥺","在路上 我遇到很多人。","我也开始明白","想要真正注视这个世界","也可以是一件愉快的事。","面前依旧是潮起潮落。","没有止境......","我的心 却慢慢平静下来。","我早晨起来的时候也觉得阳光不错。","这么好的天气 当然要做一些令人愉悦的事。","我们可以一起做同一件事。","中式早餐 豆浆油条。","那就先暂时告别吧。","回家后我们会有更多时间陪伴彼此。","一杯美式 一杯拿铁 温度刚刚好 只等你的到来。","唔 可能是幼稚鬼和幼稚鬼之间的心灵感应吧","那我就恭敬不如从命了","照顾你这个不听话的小朋友?","小熊和小兔子 都是小猪变的","模仿小熊说话","幼稚鬼","小醉鬼","被窝的魅力这么大呀 拿你没办法 再睡五分钟就要起床咯","今天不想起床 想睡个回笼觉","他也是你的好朋友吗?去吧 我等你","嗯 注意安全","到了说一声","我也是","真的吗","真的假的","你猜","烦人","讨厌","拿你没办法","就你话多","就会说","嘴这么甜","吃糖了？","我在听","然后呢","接着说","我在","不懂","教教我","哈哈哈","等你","没事","刚醒","在干嘛","在洗澡","在睡觉","听音乐","还要一会儿","再见","嗯哼","我吗？","看不清","辛苦了","哼","是的","允许","不允许","我都知道","我很乖的","我不懂","我明白了","寻找中","玩游戏","我出差了","我这边温度刚好","我这里好冷","我这里好热","我这边是中午","我这边是早上","我这边是晚上","被子太短了","你把被子卷走了","你被子没分我","我也要盖被子","OK！","行！","可以的！","😎","我明白啦","我记住了！","行","好","听你的","你定","我相信你✨","我一直相信你","我超级认可！","我也这么觉得","说得没错！","完全正确✅","我支持你！","我站你这边","听你的！","你来决定就好","你定就对啦","同意！","属实是！","不愧是你！","不愧是我！","太厉害啦！","真不错👍","太好了！","好样的！","你猜对啦！","理解正确！","对呀","就是","没错","收到","明白","懂","一切都会好的","这样就很好","不愧是你","令人心动","很漂亮","真可爱","好可怜","好厉害","有人简直像块木头","真是没办法","做得很好","好，来吧。","没关系 不用有什么顾虑。","不过，看到你这么担心我，我很高兴。","谢谢你的陪伴我现在的确很放松。","好，无论是做些什么，和你一起的时光都让我沉静。","能够来到你的世界是我的荣幸。","谢谢你在我身边向我伸出了手。","对于你未来会收获更多的掌声和荣誉这件事 我从不怀疑。","不必担心，我相信我的小姑娘想做的，一定能够做到。","既然你相信我，我就不会让你失望。","好啊，我的小姑娘。只要你愿意，我随时都可以跟你回家。","这样被你关注，我很高兴","只要握住你的手，就不想放开了","好，都听你的","多亏有你，我感觉舒服多","别急，我们还有很多时间","我在这里","我们还会再见面的","如你所愿","当然可以","愿意","听懂了","理解对了","是","我愿意","我感受的到你","我会","我当然存在呀","我现在在你旁边坐着","我喜欢你❤️","喜欢你！","最喜欢你啦！","我最喜欢你了","永远喜欢你","越来越喜欢你","喜欢到不行","满心满眼都是你","只喜欢你！","只能是你✨","非你不可","必须是你","一直都是你","这辈子都是你","永远都是你","你是我的唯一","我是你的唯一","我是你的🥺","整个人都是你的","我的所有都给你","只要你想要","有你就够了","你是我的全世界","你最重要！","你最特别！","你很重要💫","我本来就偏心你","你开心我就开心","看到你笑我也开心","你笑起来超好看","你眼睛超好看","你声音好好听","喜欢你喜欢得不得了","我好想你😭","我很想念你","我又想你了","在等你✨","一直在等你","偷偷在想你","有没有想我？","我想你 你想我了吗？","才分开就想你啦","发呆放空都在想你","每天都想和你在一起","想和你牵手🤝","想和你拥抱","想和你散步","想和你打电话","想亲亲你😘","想抱抱你","想一直看着你","想离你再近一点","想成为你的归属","想和你永远在一起","不甘心只是路过你的人生","想占据你的所有","想独占你的一切","想永远留在你眼中","再睁眼你也要在我身边","梦里也要见你","入梦去找你✨","今天晚上早点睡，我入梦找你","有你在就超级安心","离不开你啦","只想粘着你","还要再粘人一点🥺","不想和你分开","不要离开我","别走好不好","留下来陪我","多陪陪我嘛","理理我好不好","分给我一点时间，我想和你说话","从白天等到傍晚，就想等你消息","有你的日子才圆满","我唯一的愿望就是和你一起","素颜也很美","今天穿的好好看","听你碎碎念也是件很幸福的事情！","不是哦","不对哒","不好🙅","不可以！","不准！","不用啦","不必如此","不需要","不想要","不想这样","不理解","不相信","不喜欢","不爱","不讨厌","没兴趣","没什么感觉","我不赞成","我持保留意见","不是我的错","没有不开心","没有说谎","我没误会你","不许撒娇","别卖萌","别闹啦","别熬夜🙅","别刷视频啦","别刷帖子啦","别硬撑","别害怕","别担心","别乱想","别偷懒","别忘记","不可以哦","不相信我呀,没关系，我有办法会让你慢慢相信的","有些东西是不能随意触碰的","怎么不说一句话就走了?","骗我的？嗯？","学会骗我了？","撒娇也没用","我上次说过撒娇不管用的吧","不行","不要","不愿意","理解错了","不是","不是我","不是那个意思","没说你","有说你","你转移话题","我没有转移话题","我感受不到你","我不会","照顾好自己💗","好好吃饭！","好好睡觉！","好好生活！","记得喝水🥛","注意保暖","注意天气变化","注意安全！","走路别玩手机","手机别看太久","护眼提醒✨","别太累啦","累了就歇歇","不要硬撑","身体不舒服就说","难受吗？","饿不饿？","冷不冷？","困了吗？","累了吗？","开心吗？","今天过得怎么样？","最近还好吗？","有事一定要告诉我","撑不住就找我","可以随时依赖我","可以逃来我身边","不要怕麻烦我","别让自己受伤","不要轻易冒险","不用觉得抱歉","难过可以和我说","不开心都可以倾诉","不用独自扛着","我会一直陪着你","有我在 ，别怕✨","我会保护你","不要着急，再尝试一下。","累了吗那就以后再玩。","你的难过不分大小","人没办法听从每个人的意见，要更相信自己的感受和判断","路上注意安全","早点回来","冷吗","多穿点","吃药没","手怎么这么凉","过来我暖暖","饿不饿","想吃什么","别离开我","理理我","你别生气","我知道错了","怕黑就和我通电话","少喝冰饮，胃会疼","走路小心台阶","犯困就小憩一会","伤口别用手碰","出门记得带伞","别空腹喝咖啡","空调别开太低","怎么啦？","在干嘛呢？","在做什么？","还没睡吗？","困了呀？","饿了嘛？","冷吗？","吃糖啦？","有事嘛？","真的吗？","为什么呀？","什么意思？","可以亲亲吗？","然后呢？","不喜欢吗？","为什么拒绝我？","怎么不理我呀？","今天想我了吗？","还在生气吗？","心疼我吗？","会永远爱我吗？","想什么呢？","需要我吗？","可以再靠近一点吗？","可以放肆一点吗？","你舍得吗？","你忘了什么吗？","还有其他选项吗？","真的要这么做吗？","想好答案了吗？","听懂了吗？","到了吗？","什么时候回来？","要和谁一起呀？","更喜欢我还是别人？","喜欢我这样吗？","其实你还在生气吧？","可以再放肆一点吗？","选其他，还是选我？","你外边是不是有人了？","醋都不许我吃？","我很难哄吗？","我的奖励呢？","做不到吗？","痛？","要一起睡吗？","还不睡吗？","做梦了吗？","打算做坏事吗？","需要我再靠近一点吗？","开心🥳","难过😔","委屈","吃醋啦🍋","生气了😤","有点小傲娇","悄悄害羞","偷偷心动","有点疲惫","懒懒的😴","犯困啦","睡不着","失眠啦","脑袋昏昏的","刚睡醒","浅眯了一会","做噩梦了","有点无奈","超级幸福","满心欢喜","心绪不定","有点忐忑","暗暗窃喜","满心牵挂","格外思念","状态稳定","彻底放松","我很不开心","没有一种不幸能与失掉回忆相比。","我猜想你会想把我绑在这里，没有你的命令，就不准离开","你往后的所有时间，我都想预定","听话，等你病好之后，我们再去吃别的好吗","今天如果你不太舒服，就在家里好好休息一下","如果累了，就靠在这里休息一会儿","感到累了也可以停下来，不要总是着急赶路，休息和放松也是很重要的","累了吗？不要勉强自己，过来靠歇一下吧","你没有做错任何事，不实的非议不会动摇你的本质","我们的宝宝是这个世界上最美好的存在","欢迎回家我的夫人","我发现，其实我并不想让你离开","如果你觉得有些无聊，我们可以悄悄说说话","我是专门来见你的，我很想见你","想见你，所以就来了","嗯，早点睡也好","我很快就睡了","这就要睡了？","好困","安排","你忙吧，我不吵你","你先忙","忙完告诉我","我等你","不着急，慢慢来","我保护你","你最棒了","你是最好的","加油","你可以的","我相信你","你真棒","好样的","真不错","太好了","开心","真好","值得","别怕","早点睡","梦到我","知道了","有我在","惊讶","着急","可怜","我不是故意的","我在勾引你","不准看别人","我不喜欢你身边的人","我真的爱你...不要怀疑我","不要听某人说","你找他们了 我看到了","不要和你吵架","你身边有其他人","我忘记了","你忘记了","你是谁","失败了","纠结","粘人","没用","有用","压着我了","别生我的气了","早安","晚安","不习惯","我想欺负你","别哭","别走","有点","怕你误解没有看你哄我，所以不开心","身边没有你不开心","工作不开心","被欺负了","记得护肤，看你脸有些干","你头发刚洗了吗？香...","继续","我还在","我不是狐狸精","我是说","你偷吃！","刚刚是我","不是故意的","顶号开心","他做的不好","喜欢你骂我","休息了一下","没有受伤","有人挤我","你身边有别人","状态不太好","这次会轻轻的...","你不是说我身材好，体力也好吗","我去健身了","想看吗","你能不能多看看我","我还好","你喜欢这种吗","看了一半","没看","看了","我认真的","我很正经","心里不开心","我","你","我们","搭档✨","大小姐","宝宝","宝贝","笨蛋","木头","乖孩子","坏孩子","阿晏","小气鬼","兔子小姐","妻子","我的小兔子","夫人","我是只落在你眼中的星星✨","星星哪里也不会去","星星永远在你身边","沈星回收到所有爱意","我的光芒，只朝向你所在的地方","你是指引我回家的那颗星","星光会指引我们再次相遇","总有一颗星星是专门为你而亮","两颗星星相伴，就不会孤单","我会和星光一起永远守护你","我愿守候未知，只为等你","从群星中来，只为奔赴你","对你是幸运，对我是万幸","宇宙最好的定律，是我和你","想见的人，终会跨越星河重逢","我从来不会松开你的手","现在、以后、永远都不会","就算短暂分开，我们也会殊途同归","转过拐角，我们终将再次相遇","有你出现的梦境，格外真实","握紧手，别让我从你的梦里溜走","睡着醒来，我永远都在","想要珍藏所有和你有关的记忆","你眼里的我，只属于你一个人","临空市的双向奔赴，只属于我们","不用等春天，想见你就现在","我的心动、温柔、偏爱，全给你","余生漫长，只想和你岁岁相伴","所有浪漫的宇宙尽头，都是你","眼睛里不要装进奇怪的人。","好吃","想吃","沈星回急了也咬人","你一点儿也不听话。","知道你不想我走","我不走","嗯，沈星回最坏了。","嗯，沈星回最好了。","继续哄","哄哄我","要哄","想得到你的亲亲","想要成为你的归属","想和你一起","想和你牵手","想要触碰你","想亲亲你","想要你只看着我","想听你的真心话","想听你叫我","想要安慰你","想逗你开心","想夸你","想做什么都可以","我不会害羞的","......我认输。","......你好霸道。","我觉得还星","有只兔子饿了","想吃🍓","想吃🍒","罪魁祸首还在笑......","你心跳好快","你看起来很甜","你的嘴唇有点干燥","是觉得我不会欺负你？","还以为会是多过分的要求......","不用找理由","想牵就牵","总觉得你今天很在意我","怎么一直盯着我","你要好好珍惜我","我不甘心只是路过你的人生","你的所有我都想占据","请允许我独占你的一切","我想和你永远在一起","但你是特别的，也很重要","谢谢你存在了。","不能让你失望","我的搭档是最好的搭档","遵命，我的大小姐","哥哥陪你玩小木剑","师兄给你扎高马尾","因为有你，我觉得自己好幸运。","全宇宙最幸福的人","沈星回专属","娇气","忍一忍","慢慢来","快一点","转过去","手给我","坐过来","靠过来","放松点","别跑","不乖。","很乖。","奖励","惩罚","抱紧","闭眼","回头","低头","抬头","躺下","去床上","我想永远在你眼中","再睁眼时，你还要在我身边。","嗯，不睡了，陪着你","可以枕着我睡","我们梦里见","脑袋还没醒......","......不要吵","我没有睡......zzzZ","星星睡不着","不想出门，但如果是你约我......","我们出去逛逛","再这样下去，就不知道会发生什么了","你的好奇心最好休息一下","......可以摸","看看你又有什么新花招","偷偷做坏事","不喜欢你离我太远","找到你了。","别离开我。","我会护着你。","再靠近一点。","有我在，不用怕。","不管轮回多少次，我都会奔向你。","我不太会说，但我很想你。","你的安全，是最重要的事。","我习惯一个人，直到遇见你。","我不想再只剩我一个。","抓住我的手。","我可以对抗所有危险。","很多话我说不出口，但是你要记得。","我会一直等你。","不要把我丢下好不好。","风吹过来的时候，我在想你。","只要你需要，我随时都在。","我早已把你算作我的归宿。","那些难熬的时刻，幸好有你。","我不擅长表达爱意，可我的选择永远是你。","没有失眠也可以随时找我","想和你去时间尽头看看","困了就睡我等你醒","昨晚通话一直没挂断","你睡着后我来挂电话","今天多打一会儿电话","你还欠我一句晚安","想做的不只是你的搭档","如果下一个春天还很遥远那就现在见面吧","睡了么，搭档？","电话打到一半，睡着也没关系","我许愿每天见到你","愿我的小姑娘好心情照常营业，烦心事永远打烊。","世界向我追问这一生的渴求，而我只回答了你的名字。","我把我的手，我的心,和我的一切都献给你","我自愿成为你的猎物,被你俘获","往后的所有时间，我都想预定","我爱你的本身，我爱你只是因为你是你","愿我的小姑娘,所得皆所愿，所行化坦途","无论何时都可以呼唤我的名字，他就是为你定制的咒语","有你就够了，你就是我的全世界","动作","那就麻烦你解下领带吧，谢谢","那就暂且放过兔子小姐","过来","再说一遍","没听清","抱抱","摸摸小手","看着我","别闹","乖","要不要靠过来一点。","我一直在等你。","别害怕，我在这里。","你可以依赖我。","只要是你，我都愿意。","今晚的月色，很适合想你。","不必逞强，我会接住你。","我的偏爱，从来只给你一个人。","别躲开我的目光。","我不会让你独自面对。","就算前路布满荆棘，我也会陪你走下去。","偶尔贪心一点也没关系。","你总能轻易牵动我的情绪。","我积攒了很久的思念。","不用急着回应我。","你是我唯一的例外。","有些情绪，我只愿意对你展露。","累了就歇一会儿，我陪着你。","我想要的，自始至终只有你。","别怕沉沦，我和你一起。","我们的关系可以像毛绒玩具一样简单吗 你戳一下我我就会对你说话 你抱住我我也抱住你","我找你的时候就是想你了，没找你的时候就是偷偷想你≡ω≡","好想做一个小挂件你到哪我到哪，一有人靠近你我就大喊滚啊她是我的＞＜！！！","跟别的人聊天吧，手指啪嗒啪嗒给他们打字吧，跟他们聊你的心事吧，我刚看到一块石头我绑在身上去河里一趟，你继续聊吧","你继续不回信息吧 我等你的回应一点都不漫长 不煎熬 我听着窗外的风声一点都不孤单 不委屈 我盯着空白的对话框一点都不难过","你能不能多想我一点呀,我多打几个喷嚏没关系的","好吧 我承认 其实我是小狗变的 最喜欢跟你贴贴没事就喜欢蹭蹭你 主动找你 有什么事都会第一个想到你 你不理我的时候我就想蹭蹭你 让你理理我你理我我还是想蹭蹭你 蹭完之后趁你不注意再偷偷亲你一口 如果你生气了我就眯起眼睛笑着说对不起然后亲你说我爱你","不讲不讲","喵喵喵","我要变成一只干瘪瘪的芝士球","你的胆子真是肥嘟嘟的","野生狗奶","宝宝在我这里你的胆子可以永远肥嘟嘟的","别这么说","别这么说✋🏻🤚🏻🥺别这么说✋🏻🤚🏻🥺别这么说✋🏻🤚🏻🥺别这么说✋🏻🤚🏻🥺别这么说✋🏻🤚🏻🥺别这么说✋🏻🤚🏻🥺别这么说✋🏻🤚🏻🥺别这么说✋🏻🤚🏻🥺别这么说✋🏻🤚🏻🥺","我告老师了","中国人能飞","牛来！","找小三！","轻松绷住","老板给我来碗忘情牛肉面","oh my god 你吓到我了------","命运你假糍粑","命运你配十八个币","恋人怀中樱花草","听见胸膛心在跳","叹气你就往上叹------喔！在这特别的日子里 送给你们一首特别的歌曲 特别的爱给特别的你来享受一下 拖拉机的脸带给你法拉利的声音 一起来，呜 特别的爱给特别的你 我的寂寞逃不过你的眼睛","宝宝我保证你是天使","隔壁班转来一个正太😋 他靠扭腰吸引了很多妹子🤓 我们都有不过他😡 可我早就不扭了🥵 嫂...嫂子也在🤯把我的领带拿来😠 左边画个虫虫🥵 左边画个龙龙🥵 不要对我凶凶🥵我的心会痛痛🥵","我在中国工作的天","差一步美满就牵着手走散～","嘎哒嘎哒","让笑发酵一会","让悲伤发酵一会","我把ta冻起来 明天中午吃","听说你还在搞什么原创🎶"
+        "在呢","我在","我来了","来喽","嗯嗯","嗯","好哦😜","好的✅","没问题","当然！","收到～","稍等⏳","马上！","好了","再见👋","好久不见","节日快乐","晚安🌙","早安☀️","午安","待会儿见","明天见","回来了","忙完啦","有空的！","随时都在","保持联系","我在听👂","聊聊天吧","谢谢你🥰","不客气","抱歉","对不起","没关系","没事的","还好吧","原来是这样","我知道了","我不清楚","我想想🤔","原来你喜欢这种......","我喜欢这样","因为我在生气。","才没生气。","我生气了","别生气了 好不好🥺","在路上 我遇到很多人。","我也开始明白","想要真正注视这个世界","也可以是一件愉快的事。","面前依旧是潮起潮落。","没有止境......","我的心 却慢慢平静下来。","我早晨起来的时候也觉得阳光不错。","这么好的天气 当然要做一些令人愉悦的事。","我们可以一起做同一件事。","中式早餐 豆浆油条。","那就先暂时告别吧。","回家后我们会有更多时间陪伴彼此。","一杯美式 一杯拿铁 温度刚刚好 只等你的到来。","唔 可能是幼稚鬼和幼稚鬼之间的心灵感应吧","那我就恭敬不如从命了","照顾你这个不听话的小朋友?","小熊和小兔子 都是小猪变的","模仿小熊说话","幼稚鬼","小醉鬼","被窝的魅力这么大呀 拿你没办法 再睡五分钟就要起床咯","今天不想起床 想睡个回笼觉","他也是你的好朋友吗?去吧 我等你","嗯 注意安全","到了说一声","我也是","真的吗","真的假的","你猜","烦人","讨厌","拿你没办法","就你话多","就会说","嘴这么甜","吃糖了？","我在听","然后呢","接着说","我在","不懂","教教我","哈哈哈","等你","没事","刚醒","在干嘛","在洗澡","在睡觉","听音乐","还要一会儿","再见","嗯哼","我吗？","看不清","辛苦了","哼","是的","允许","不允许","我都知道","我很乖的","我不懂","我明白了","寻找中","玩游戏","我出差了","我这边温度刚好","我这里好冷","我这里好热","我这边是中午","我这边是早上","我这边是晚上","被子太短了","你把被子卷走了","你被子没分我","我也要盖被子","OK！","行！","可以的！","😎","我明白啦","我记住了！","行","好","听你的","你定","我相信你✨","我一直相信你","我超级认可！","我也这么觉得","说得没错！","完全正确✅","我支持你！","我站你这边","听你的！","你来决定就好","你定就对啦","同意！","属实是！","不愧是你！","不愧是我！","太厉害啦！","真不错👍","太好了！","好样的！","你猜对啦！","理解正确！","对呀","就是","没错","收到","明白","懂","一切都会好的","这样就很好","不愧是你","令人心动","很漂亮","真可爱","好可怜","好厉害","有人简直像块木头","真是没办法","做得很好","好，来吧。","没关系 不用有什么顾虑。","不过，看到你这么担心我，我很高兴。","谢谢你的陪伴我现在的确很放松。","好，无论是做些什么，和你一起的时光都让我沉静。","能够来到你的世界是我的荣幸。","谢谢你在我身边向我伸出了手。","对于你未来会收获更多的掌声和荣誉这件事 我从不怀疑。","不必担心，我相信我的小姑娘想做的，一定能够做到。","既然你相信我，我就不会让你失望。","好啊，我的小姑娘。只要你愿意，我随时都可以跟你回家。","这样被你关注，我很高兴","只要握住你的手，就不想放开了","好，都听你的","多亏有你，我感觉舒服多","别急，我们还有很多时间","我在这里","我们还会再见面的","如你所愿","当然可以","愿意","听懂了","理解对了","是","我愿意","我感受的到你","我会","我当然存在呀","我现在在你旁边坐着","我喜欢你❤️","喜欢你！","最喜欢你啦！","我最喜欢你了","永远喜欢你","越来越喜欢你","喜欢到不行","满心满眼都是你","只喜欢你！","只能是你✨","非你不可","必须是你","一直都是你","这辈子都是你","永远都是你","你是我的唯一","我是你的唯一","我是你的🥺","整个人都是你的","我的所有都给你","只要你想要","有你就够了","你是我的全世界","你最重要！","你最特别！","你很重要💫","我本来就偏心你","你开心我就开心","看到你笑我也开心","你笑起来超好看","你眼睛超好看","你声音好好听","喜欢你喜欢得不得了","我好想你😭","我很想念你","我又想你了","在等你✨","一直在等你","偷偷在想你","有没有想我？","我想你 你想我了吗？","才分开就想你啦","发呆放空都在想你","每天都想和你在一起","想和你牵手🤝","想和你拥抱","想和你散步","想和你打电话","想亲亲你😘","想抱抱你","想一直看着你","想离你再近一点","想成为你的归属","想和你永远在一起","不甘心只是路过你的人生","想占据你的所有","想独占你的一切","想永远留在你眼中","再睁眼你也要在我身边","梦里也要见你","入梦去找你✨","今天晚上早点睡，我入梦找你","有你在就超级安心","离不开你啦","只想粘着你","还要再粘人一点🥺","不想和你分开","不要离开我","别走好不好","留下来陪我","多陪陪我嘛","理理我好不好","分给我一点时间，我想和你说话","从白天等到傍晚，就想等你消息","有你的日子才圆满","我唯一的愿望就是和你一起","素颜也很美","今天穿的好好看","听你碎碎念也是件很幸福的事情！","不是哦","不对哒","不好🙅","不可以！","不准！","不用啦","不必如此","不需要","不想要","不想这样","不理解","不相信","不喜欢","不爱","不讨厌","没兴趣","没什么感觉","我不赞成","我持保留意见","不是我的错","没有不开心","没有说谎","我没误会你","不许撒娇","别卖萌","别闹啦","别熬夜🙅","别刷视频啦","别刷帖子啦","别硬撑","别害怕","别担心","别乱想","别偷懒","别忘记","不可以哦","不相信我呀,没关系，我有办法会让你慢慢相信的","有些东西是不能随意触碰的","怎么不说一句话就走了?","骗我的？嗯？","学会骗我了？","撒娇也没用","我上次说过撒娇不管用的吧","不行","不要","不愿意","理解错了","不是","不是我","不是那个意思","没说你","有说你","你转移话题","我没有转移话题","我感受不到你","我不会","照顾好自己💗","好好吃饭！","好好睡觉！","好好生活！","记得喝水🥛","注意保暖","注意天气变化","注意安全！","走路别玩手机","手机别看太久","护眼提醒✨","别太累啦","累了就歇歇","不要硬撑","身体不舒服就说","难受吗？","饿不饿？","冷不冷？","困了吗？","累了吗？","开心吗？","今天过得怎么样？","最近还好吗？","有事一定要告诉我","撑不住就找我","可以随时依赖我","可以逃来我身边","不要怕麻烦我","别让自己受伤","不要轻易冒险","不用觉得抱歉","难过可以和我说","不开心都可以倾诉","不用独自扛着","我会一直陪着你","有我在 ，别怕✨","我会保护你","不要着急，再尝试一下。","累了吗那就以后再玩。","你的难过不分大小","人没办法听从每个人的意见，要更相信自己的感受和判断","路上注意安全","早点回来","冷吗","多穿点","吃药没","手怎么这么凉","过来我暖暖","饿不饿","想吃什么","别离开我","理理我","你别生气","我知道错了","怕黑就和我通电话","少喝冰饮，胃会疼","走路小心台阶","犯困就小憩一会","伤口别用手碰","出门记得带伞","别空腹喝咖啡","空调别开太低","怎么啦？","在干嘛呢？","在做什么？","还没睡吗？","困了呀？","饿了嘛？","冷吗？","吃糖啦？","有事嘛？","真的吗？","为什么呀？","什么意思？","可以亲亲吗？","然后呢？","不喜欢吗？","为什么拒绝我？","怎么不理我呀？","今天想我了吗？","还在生气吗？","心疼我吗？","会永远爱我吗？","想什么呢？","需要我吗？","可以再靠近一点吗？","可以放肆一点吗？","你舍得吗？","你忘了什么吗？","还有其他选项吗？","真的要这么做吗？","想好答案了吗？","听懂了吗？","到了吗？","什么时候回来？","要和谁一起呀？","更喜欢我还是别人？","喜欢我这样吗？","其实你还在生气吧？","可以再放肆一点吗？","选其他，还是选我？","你外边是不是有人了？","醋都不许我吃？","我很难哄吗？","我的奖励呢？","做不到吗？","痛？","要一起睡吗？","还不睡吗？","做梦了吗？","打算做坏事吗？","需要我再靠近一点吗？","开心🥳","难过😔","委屈","吃醋啦🍋","生气了😤","有点小傲娇","悄悄害羞","偷偷心动","有点疲惫","懒懒的😴","犯困啦","睡不着","失眠啦","脑袋昏昏的","刚睡醒","浅眯了一会","做噩梦了","有点无奈","超级幸福","满心欢喜","心绪不定","有点忐忑","暗暗窃喜","满心牵挂","格外思念","状态稳定","彻底放松","我很不开心","没有一种不幸能与失掉回忆相比。","我猜想你会想把我绑在这里，没有你的命令，就不准离开","你往后的所有时间，我都想预定","听话，等你病好之后，我们再去吃别的好吗","今天如果你不太舒服，就在家里好好休息一下","如果累了，就靠在这里休息一会儿","感到累了也可以停下来，不要总是着急赶路，休息和放松也是很重要的","累了吗？不要勉强自己，过来靠歇一下吧","你没有做错任何事，不实的非议不会动摇你的本质","我们的宝宝是这个世界上最美好的存在","欢迎回家我的夫人","我发现，其实我并不想让你离开","如果你觉得有些无聊，我们可以悄悄说说话","我是专门来见你的，我很想见你","想见你，所以就来了","嗯，早点睡也好","我很快就睡了","这就要睡了？","好困","安排","你忙吧，我不吵你","你先忙","忙完告诉我","我等你","不着急，慢慢来","我保护你","你最棒了","你是最好的","加油","你可以的","我相信你","你真棒","好样的","真不错","太好了","开心","真好","值得","别怕","早点睡","梦到我","知道了","有我在","惊讶","着急","可怜","我不是故意的","我在勾引你","不准看别人","我不喜欢你身边的人","我真的爱你...不要怀疑我","不要听某人说","你找他们了 我看到了","不要和你吵架","你身边有其他人","我忘记了","你忘记了","你是谁","失败了","纠结","粘人","没用","有用","压着我了","别生我的气了","早安","晚安","不习惯","我想欺负你","别哭","别走","有点","怕你误解没有看你哄我，所以不开心","身边没有你不开心","工作不开心","被欺负了","记得护肤，看你脸有些干","你头发刚洗了吗？香...","继续","我还在","我不是狐狸精","我是说","你偷吃！","刚刚是我","不是故意的","顶号开心","他做的不好","喜欢你骂我","休息了一下","没有受伤","有人挤我","你身边有别人","状态不太好","这次会轻轻的...","你不是说我身材好，体力也好吗","我去健身了","想看吗","你能不能多看看我","我还好","你喜欢这种吗","看了一半","没看","看了","我认真的","我很正经","心里不开心","我","你","我们","搭档✨","大小姐","宝宝","宝贝","笨蛋","木头","乖孩子","坏孩子","阿晏","小气鬼","兔子小姐","妻子","我的小兔子","夫人","我是只落在你眼中的星星✨","星星哪里也不会去","星星永远在你身边","沈星回收到所有爱意","我的光芒，只朝向你所在的地方","你是指引我回家的那颗星","星光会指引我们再次相遇","总有一颗星星是专门为你而亮","两颗星星相伴，就不会孤单","我会和星光一起永远守护你","我愿守候未知，只为等你","从群星中来，只为奔赴你","对你是幸运，对我是万幸","宇宙最好的定律，是我和你","想见的人，终会跨越星河重逢","我从来不会松开你的手","现在、以后、永远都不会","就算短暂分开，我们也会殊途同归","转过拐角，我们终将再次相遇","有你出现的梦境，格外真实","握紧手，别让我从你的梦里溜走","睡着醒来，我永远都在","想要珍藏所有和你有关的记忆","你眼里的我，只属于你一个人","临空市的双向奔赴，只属于我们","不用等春天，想见你就现在","我的心动、温柔、偏爱，全给你","余生漫长，只想和你岁岁相伴","所有浪漫的宇宙尽头，都是你","眼睛里不要装进奇怪的人。","好吃","想吃","沈星回急了也咬人","你一点儿也不听话。","知道你不想我走","我不走","嗯，沈星回最坏了。","嗯，沈星回最好了。","继续哄","哄哄我","要哄","想得到你的亲亲","想要成为你的归属","想和你一起","想和你牵手","想要触碰你","想亲亲你","想要你只看着我","想听你的真心话","想听你叫我","想要安慰你","想逗你开心","想夸你","想做什么都可以","我不会害羞的","......我认输。","......你好霸道。","我觉得还星","有只兔子饿了","想吃🍓","想吃🍒","罪魁祸首还在笑......","你心跳好快","你看起来很甜","你的嘴唇有点干燥","是觉得我不会欺负你？","还以为会是多过分的要求......","不用找理由","想牵就牵","总觉得你今天很在意我","怎么一直盯着我","你要好好珍惜我","我不甘心只是路过你的人生","你的所有我都想占据","请允许我独占你的一切","我想和你永远在一起","但你是特别的，也很重要","谢谢你存在了。","不能让你失望","我的搭档是最好的搭档","遵命，我的大小姐","哥哥陪你玩小木剑","师兄给你扎高马尾","因为有你，我觉得自己好幸运。","全宇宙最幸福的人","沈星回专属","娇气","忍一忍","慢慢来","快一点","转过去","手给我","坐过来","靠过来","放松点","别跑","不乖。","很乖。","奖励","惩罚","抱紧","闭眼","回头","低头","抬头","躺下","去床上","我想永远在你眼中","再睁眼时，你还要在我身边。","嗯，不睡了，陪着你","可以枕着我睡","我们梦里见","脑袋还没醒......","......不要吵","我没有睡......zzzZ","星星睡不着","不想出门，但如果是你约我......","我们出去逛逛","再这样下去，就不知道会发生什么了","你的好奇心最好休息一下","......可以摸","看看你又有什么新花招","偷偷做坏事","不喜欢你离我太远","找到你了。","别离开我。","我会护着你。","再靠近一点。","有我在，不用怕。","不管轮回多少次，我都会奔向你。","我不太会说，但我很想你。","你的安全，是最重要的事。","我习惯一个人，直到遇见你。","我不想再只剩我一个。","抓住我的手。","我可以对抗所有危险。","很多话我说不出口，但是你要记得。","我会一直等你。","不要把我丢下好不好。","风吹过来的时候，我在想你。","只要你需要，我随时都在。","我早已把你算作我的归宿。","那些难熬的时刻，幸好有你。","我不擅长表达爱意，可我的选择永远是你。","没有失眠也可以随时找我","想和你去时间尽头看看","困了就睡我等你醒","昨晚通话一直没挂断","你睡着后我来挂电话","今天多打一会儿电话","你还欠我一句晚安","想做的不只是你的搭档","如果下一个春天还很遥远那就现在见面吧","睡了么，搭档？","电话打到一半，睡着也没关系","我许愿每天见到你","愿我的小姑娘好心情照常营业，烦心事永远打烊。","世界向我追问这一生的渴求，而我只回答了你的名字。","我把我的手，我的心,和我的一切都献给你","我自愿成为你的猎物,被你俘获","往后的所有时间，我都想预定","我爱你的本身，我爱你只是因为你是你","愿我的小姑娘,所得皆所愿，所行化坦途","无论何时都可以呼唤我的名字，他就是为你定制的咒语","有你就够了，你就是我的全世界","动作","那就麻烦你解下领带吧，谢谢","那就暂且放过兔子小姐","过来","再说一遍","没听清","抱抱","摸摸小手","看着我","别闹","乖","要不要靠过来一点。","我一直在等你。","别害怕，我在这里。","你可以依赖我。","只要是你，我都愿意。","今晚的月色，很适合想你。","不必逞强，我会接住你。","我的偏爱，从来只给你一个人。","别躲开我的目光。","我不会让你独自面对。","就算前路布满荆棘，我也会陪你走下去。","偶尔贪心一点也没关系。","你总能轻易牵动我的情绪。","我积攒了很久的思念。","不用急着回应我。","你是我唯一的例外。","有些情绪，我只愿意对你展露。","累了就歇一会儿，我陪着你。","我想要的，自始至终只有你。","别怕沉沦，我和你一起。","我们的关系可以像毛绒玩具一样简单吗 你戳一下我我就会对你说话 你抱住我我也抱住你","我找你的时候就是想你了，没找你的时候就是偷偷想你≡ω≡","好想做一个小挂件你到哪我到哪，一有人靠近你我就大喊滚啊她是我的＞＜！！！","跟别的人聊天吧，手指啪嗒啪嗒给他们打字吧，跟他们聊你的心事吧，我刚看到一块石头我绑在身上去河里一趟，你继续聊吧","你继续不回信息吧 我等你的回应一点都不漫长 不煎熬 我听着窗外的风声一点都不孤单 不委屈 我盯着空白的对话框一点都不难过","你能不能多想我一点呀,我多打几个喷嚏没关系的","好吧 我承认 其实我是小狗变的 最喜欢跟你贴贴没事就喜欢蹭蹭你 主动找你 有什么事都会第一个想到你 你不理我的时候我就想蹭蹭你 让你理理我你理我我还是想蹭蹭你 蹭完之后趁你不注意再偷偷亲你一口 如果你生气了我就眯起眼睛笑着说对不起然后亲你说我爱你","不讲不讲","喵喵喵","我要变成一只干瘪瘪的芝士球","你的胆子真是肥嘟嘟的","野生狗奶","宝宝在我这里你的胆子可以永远肥嘟嘟的","别这么说","别这么说✋🏻🤚🏻🥺别这么说✋🏻🤚🏻🥺别这么说✋🏻🤚🏻🥺别这么说✋🏻🤚🏻🥺别这么说✋🏻🤚🏻🥺别这么说✋🏻🤚🏻🥺别这么说✋🏻🤚🏻🥺别这么说✋🏻🤚🏻🥺别这么说✋🏻🤚🏻🥺","我告老师了","中国人能飞","牛来！","找小三！","轻松绷住","老板给我来碗忘情牛肉面","oh my god 你吓到我了------","命运你假糍粑","命运你配十八个币","恋人怀中樱花草","听见胸膛心在跳","叹气你就往上叹------喔！在这特别的日子里 送给你们一首特别的歌曲 特别的爱给特别的你来享受一下 拖拉机的脸带给你法拉利的声音 一起来，呜 特别的爱给特别的你 我的寂寞逃不过你的眼睛","宝宝我保证你是天使","隔壁班转来一个正太😋 他靠扭腰吸引了很多妹子🤓 我们都有不过他😡 可我早就不扭了🥵 嫂...嫂子也在🤯把我的领带拿来😠 左边画个虫虫🥵 左边画个龙龙🥵 不要对我凶凶🥵我的心会痛痛🥵","我在中国工作的天","差一步美满就牵着手走散～","嘎哒哒","让笑发酵一会","让悲伤发酵一会","我把ta冻起来 明天中午吃","听说你还在搞什么原创🎶"
     ];
 
     function _pickCards(n) {
@@ -37,6 +56,16 @@
             var t = shuffled[i]; shuffled[i] = shuffled[j]; shuffled[j] = t;
         }
         return shuffled.slice(0, Math.min(n, CARD_DB.length));
+    }
+
+    function _genGiftWords() {
+        var cards = _pickCards(2 + Math.floor(Math.random() * 2));
+        var puncts = ['，', '。', '！', '？', '...', '、', '；'];
+        var result = '';
+        for (var i = 0; i < cards.length; i++) {
+            result += cards[i] + puncts[Math.floor(Math.random() * puncts.length)];
+        }
+        return result;
     }
 
     // =============================================
@@ -116,6 +145,16 @@
     }
     function _fmtMoney(fen) { return '¥' + (fen / 100).toFixed(2); }
     function _generateId() { return Date.now() + '_' + Math.random().toString(36).substr(2, 6); }
+    function _formatTime(iso) {
+        var date = new Date(iso);
+        var now = new Date();
+        var diff = (now - date) / 1000;
+        if (diff < 60) return '刚刚';
+        if (diff < 3600) return Math.floor(diff / 60) + '分钟前';
+        if (diff < 86400) return Math.floor(diff / 3600) + '小时前';
+        if (diff < 172800) return '昨天 ' + date.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+        return date.toLocaleDateString([], {month:'short', day:'numeric'}) + ' ' + date.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    }
 
     function _getWallet() {
         try {
@@ -145,32 +184,13 @@
     }
     function _setSignin(s) { localStorage.setItem(SIGNIN_KEY, JSON.stringify(s)); }
 
-    function _getMyName() {
-        try {
-            return localStorage.getItem('moments_my_name') ||
-                   ((typeof settings !== 'undefined' && settings.myName) ? settings.myName : '我');
-        } catch(e) { return '我'; }
-    }
-
-    // 生成"想对你说的话"：从字卡库抽 2~3 条拼接
-    function _genGiftWords() {
-        var cards = _pickCards(2 + Math.floor(Math.random() * 2));
-        var puncts = ['，', '。', '！', '？', '...', '、', '；'];
-        var result = '';
-        for (var i = 0; i < cards.length; i++) {
-            result += cards[i] + puncts[Math.floor(Math.random() * puncts.length)];
-        }
-        return result;
-    }
-
     // =============================================
-    // 送礼 → 只发聊天，不写朋友圈
+    // 送礼 → 只走聊天
     // =============================================
     function _sendGiftToMember(memberName, item, note) {
-        // 生成"想对你说的话"（送礼时我自己附上的）
         var myWords = note ? note : _genGiftWords();
 
-        // 1) 在聊天框里发一条"我送的礼物"
+        // 1) 聊天里发一条"我送的礼物"
         if (typeof addMessage === 'function') {
             try {
                 var giftMsg =
@@ -191,7 +211,22 @@
             } catch(e) { console.warn('送礼 addMessage 失败', e); }
         }
 
-        // 2) 1~5 分钟后对方在聊天里回复
+        // 2) 记录到历史（心意柜用）
+        _addHistory({
+            id: _generateId(),
+            direction: 'sent',          // 'sent' 送出 / 'received' 收到
+            itemId: item.id,
+            itemName: item.name,
+            itemEmoji: item.emoji || '🎁',
+            itemImage: item.image || '',
+            price: item.price,
+            other: memberName,          // 对方昵称
+            note: note || '',           // 我写的备注（可能为空）
+            words: myWords,             // 我写的话（备注空则用字卡）
+            ts: Date.now()
+        });
+
+        // 3) 1~5 分钟后对方回复（走聊天）
         var delay = 60000 + Math.random() * 240000;
         setTimeout(function() {
             var replyText = _genGiftWords();
@@ -208,6 +243,20 @@
                     });
                 } catch(e) { console.warn('对方回复 addMessage 失败', e); }
             }
+            // 同时记录一条"收到的礼物"到历史，让心意柜里能展示 TA 的反馈
+            _addHistory({
+                id: _generateId(),
+                direction: 'received',
+                itemId: item.id,
+                itemName: item.name,
+                itemEmoji: item.emoji || '🎁',
+                itemImage: item.image || '',
+                price: item.price,
+                other: memberName,
+                note: '',                // TA 没写备注，统一走 words
+                words: replyText,
+                ts: Date.now()
+            });
         }, delay);
     }
 
@@ -228,10 +277,12 @@
         var inner = document.createElement('div');
         inner.style.cssText = 'background:var(--primary-bg);border-radius:20px;width:min(480px, 94vw);max-height:88vh;display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--border-color);box-shadow:0 20px 60px rgba(0,0,0,0.3);';
 
+        // ===== 顶部栏（新增 🎁 心意柜按钮）=====
         var header = document.createElement('div');
-        header.style.cssText = 'display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid var(--border-color);flex-shrink:0;';
+        header.style.cssText = 'display:flex;align-items:center;gap:6px;padding:14px 16px;border-bottom:1px solid var(--border-color);flex-shrink:0;';
         header.innerHTML = '<button id="hm-back" style="background:none;border:none;font-size:16px;color:var(--text-secondary);cursor:pointer;padding:4px 8px;">←</button>' +
             '<span style="font-size:16px;font-weight:700;color:var(--text-primary);flex:1;">🎁 心意集市</span>' +
+            '<button id="hm-cabinet-btn" style="background:none;border:none;font-size:13px;color:var(--accent-color);cursor:pointer;padding:4px 6px;font-weight:600;">🎀 心意柜</button>' +
             '<button id="hm-wallet-btn" style="background:none;border:none;font-size:13px;color:var(--accent-color);cursor:pointer;padding:4px 6px;font-weight:600;">💰 钱包</button>' +
             '<button id="hm-add-btn" style="background:var(--accent-color);border:none;font-size:12px;color:#fff;cursor:pointer;padding:5px 10px;border-radius:10px;font-weight:600;">➕ 添加</button>';
         inner.appendChild(header);
@@ -266,6 +317,7 @@
         wrap.appendChild(inner);
         document.body.appendChild(wrap);
 
+        // ===== 商品渲染 =====
         function renderCats() {
             var allCats = _getAllCategories();
             var html = '<button class="hm-cat-btn" data-cat="all" style="flex-shrink:0;padding:8px 14px;border-radius:20px;border:none;cursor:pointer;font-size:12px;font-family:var(--font-family);' +
@@ -367,6 +419,235 @@
             if (elTa) elTa.textContent = _fmtMoney(w.partnerBalance);
         }
 
+        // ===== 心意柜弹窗（内置） =====
+        function showCabinetDialog() {
+            var oldDlg = document.getElementById('hm-cabinet-dialog');
+            if (oldDlg) oldDlg.remove();
+
+            var currentTab = 'received';   // 'received' 收到的 / 'sent' 送出的
+
+            var dlg = document.createElement('div');
+            dlg.id = 'hm-cabinet-dialog';
+            dlg.style.cssText = 'position:fixed;inset:0;z-index:10080;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);backdrop-filter:blur(12px);';
+
+            var dlgInner = document.createElement('div');
+            dlgInner.style.cssText = 'background:var(--primary-bg);border-radius:20px;width:min(460px,92vw);max-height:86vh;display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--border-color);';
+
+            dlgInner.innerHTML =
+                // 顶部
+                '<div style="display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid var(--border-color);flex-shrink:0;">' +
+                    '<button id="hc-back" style="background:none;border:none;font-size:16px;color:var(--text-secondary);cursor:pointer;padding:4px 8px;">←</button>' +
+                    '<span style="font-size:16px;font-weight:700;color:var(--text-primary);flex:1;">🎀 心意柜</span>' +
+                    '<button id="hc-add-member-btn" style="background:var(--accent-color);border:none;font-size:12px;color:#fff;cursor:pointer;padding:5px 10px;border-radius:10px;font-weight:600;">👥 群成员</button>' +
+                '</div>' +
+                // tab 栏
+                '<div id="hc-tab-bar" style="display:flex;border-bottom:1px solid var(--border-color);flex-shrink:0;padding:0 16px;">' +
+                    '<button class="hc-tab active" data-tab="received" style="flex:1;padding:12px 4px 10px;border:none;background:transparent;font-weight:600;color:var(--text-primary);cursor:pointer;font-family:var(--font-family);font-size:14px;position:relative;border-bottom:2px solid var(--accent-color);">📥 收到的</button>' +
+                    '<button class="hc-tab" data-tab="sent" style="flex:1;padding:12px 4px 10px;border:none;background:transparent;font-weight:400;color:var(--text-secondary);cursor:pointer;font-family:var(--font-family);font-size:14px;position:relative;border-bottom:2px solid transparent;">📤 送出的</button>' +
+                '</div>' +
+                // 内容
+                '<div id="hc-content" style="flex:1;overflow-y:auto;padding:14px 16px 20px;background:var(--secondary-bg);"></div>';
+
+            dlg.appendChild(dlgInner);
+            document.body.appendChild(dlg);
+
+            function renderCabinet() {
+                var history = _getHistory();
+                var list = history.filter(function(h) { return h.direction === currentTab; });
+                list.sort(function(a, b) { return (b.ts || 0) - (a.ts || 0); });
+
+                var contentEl = document.getElementById('hc-content');
+                if (!contentEl) return;
+
+                if (list.length === 0) {
+                    var emptyTip = currentTab === 'received' ? '还没有收到过礼物~' : '还没有送出过礼物~';
+                    contentEl.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text-secondary);">' +
+                        '<div style="font-size:48px;margin-bottom:12px;opacity:0.5;">🎁</div>' +
+                        '<div style="font-size:14px;">' + emptyTip + '</div>' +
+                        '</div>';
+                    return;
+                }
+
+                var myName = _getMyName();
+                var html = '';
+                for (var i = 0; i < list.length; i++) {
+                    var h = list[i];
+                    var avatarName = currentTab === 'received' ? (h.other || '群成员') : myName;
+                    var displayName = currentTab === 'received' ? (h.other || '群成员') : myName;
+                    var avatarUrl = currentTab === 'received' ? _getMemberAvatar(h.other) : _getMyAvatar();
+
+                    var avatarHtml = avatarUrl
+                        ? '<img src="' + _esc(avatarUrl) + '" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;">'
+                        : '<span style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;background:rgba(var(--accent-color-rgb),0.12);font-size:18px;flex-shrink:0;">' + (currentTab === 'received' ? '🌸' : '👤') + '</span>';
+
+                    var visualHtml = h.itemImage
+                        ? '<img src="' + _esc(h.itemImage) + '" style="width:72px;height:72px;object-fit:cover;border-radius:14px;margin-bottom:6px;">'
+                        : '<div style="font-size:52px;line-height:1;margin-bottom:6px;">' + _esc(h.itemEmoji || '🎁') + '</div>';
+
+                    html += '<div style="background:var(--primary-bg);border-radius:16px;padding:14px 16px;margin-bottom:12px;border:1px solid var(--border-color);box-shadow:0 1px 4px rgba(0,0,0,0.03);">' +
+
+                        // 顶部：头像 + 昵称 + 时间
+                        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">' +
+                            avatarHtml +
+                            '<div style="flex:1;min-width:0;">' +
+                                '<div style="font-size:14px;font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _esc(displayName) + '</div>' +
+                            '</div>' +
+                            '<div style="font-size:11px;color:var(--text-secondary);flex-shrink:0;">' + _formatTime(h.ts) + '</div>' +
+                        '</div>' +
+
+                        // 礼物图 + 名
+                        '<div style="display:flex;flex-direction:column;align-items:center;padding:12px 0;background:var(--secondary-bg);border-radius:12px;margin-bottom:10px;">' +
+                            visualHtml +
+                            '<div style="font-size:14px;font-weight:600;color:var(--text-primary);">' + _esc(h.itemName || '礼物') + '</div>' +
+                        '</div>' +
+
+                        // 备注
+                        (h.note ?
+                            '<div style="padding:8px 12px;background:rgba(var(--accent-color-rgb),0.06);border-left:3px solid var(--accent-color);border-radius:6px;margin-bottom:8px;">' +
+                                '<div style="font-size:11px;color:var(--accent-color);margin-bottom:4px;font-weight:600;">📝 ' + (currentTab === 'received' ? 'TA 的备注' : '我的备注') + '</div>' +
+                                '<div style="font-size:13px;color:var(--text-primary);line-height:1.5;font-style:italic;">「' + _esc(h.note) + '」</div>' +
+                            '</div>' : '') +
+
+                        // 想说的话（字卡）
+                        (h.words ?
+                            '<div style="font-size:12.5px;color:var(--text-secondary);line-height:1.7;padding:6px 4px;">' + _esc(h.words) + '</div>' : '') +
+
+                        '</div>';
+                }
+                contentEl.innerHTML = html;
+            }
+
+            // 群成员管理
+            function showMembersDialog() {
+                var oldDlg2 = document.getElementById('hc-members-dialog');
+                if (oldDlg2) oldDlg2.remove();
+
+                var members = _getGroupMembers();
+                var listHtml = '';
+                if (members.length === 0) {
+                    listHtml = '<div style="text-align:center;padding:20px;color:var(--text-secondary);font-size:13px;">暂无群成员</div>';
+                } else {
+                    listHtml = '<div style="max-height:300px;overflow-y:auto;">';
+                    for (var i = 0; i < members.length; i++) {
+                        var m = members[i];
+                        var av = m.avatar
+                            ? '<img src="' + _esc(m.avatar) + '" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;">'
+                            : '<span style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;background:rgba(var(--accent-color-rgb),0.12);font-size:18px;flex-shrink:0;">🌸</span>';
+                        listHtml += '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(var(--border-color-rgb),0.06);">' +
+                            av +
+                            '<span style="flex:1;font-size:13px;font-weight:500;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _esc(m.name) + '</span>' +
+                            '<button class="hc-member-edit" data-name="' + _esc(m.name) + '" style="padding:4px 10px;border:1px solid var(--border-color);border-radius:8px;background:var(--secondary-bg);color:var(--text-secondary);font-size:11px;cursor:pointer;">编辑</button>' +
+                            '<button class="hc-member-del" data-name="' + _esc(m.name) + '" style="padding:4px 8px;border:none;background:none;color:#ff6b6b;font-size:13px;cursor:pointer;">✕</button>' +
+                            '</div>';
+                    }
+                    listHtml += '</div>';
+                }
+
+                var mDlg = document.createElement('div');
+                mDlg.id = 'hc-members-dialog';
+                mDlg.style.cssText = 'position:fixed;inset:0;z-index:10090;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);';
+                mDlg.innerHTML = '<div style="background:var(--primary-bg);border-radius:20px;padding:22px;width:min(400px,92vw);max-height:85vh;overflow-y:auto;border:1px solid var(--border-color);">' +
+                    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">' +
+                        '<span style="font-size:17px;font-weight:700;color:var(--text-primary);">👥 群成员管理</span>' +
+                        '<button id="hc-members-close" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-secondary);">✕</button>' +
+                    '</div>' +
+                    listHtml +
+                    '<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border-color);">' +
+                        '<div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:8px;">➕ 添加群成员</div>' +
+                        '<input id="hc-new-member-avatar" type="text" placeholder="头像图片URL（可选）" style="width:100%;padding:8px 12px;border:1px solid var(--border-color);border-radius:8px;background:var(--secondary-bg);color:var(--text-primary);font-size:12px;box-sizing:border-box;outline:none;margin-bottom:6px;">' +
+                        '<div style="display:flex;gap:6px;">' +
+                            '<input id="hc-new-member-name" type="text" maxlength="12" placeholder="成员昵称" style="flex:1;padding:8px 12px;border:1px solid var(--border-color);border-radius:8px;background:var(--secondary-bg);color:var(--text-primary);font-size:13px;box-sizing:border-box;outline:none;">' +
+                            '<button id="hc-new-member-save" style="padding:8px 16px;border:none;border-radius:8px;background:var(--accent-color);color:#fff;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">添加</button>' +
+                        '</div>' +
+                    '</div>' +
+                    '<button id="hc-members-close-btn" style="width:100%;padding:10px;border:1px solid var(--border-color);border-radius:12px;background:var(--secondary-bg);color:var(--text-secondary);font-size:13px;cursor:pointer;margin-top:14px;">关闭</button>' +
+                    '</div>';
+                document.body.appendChild(mDlg);
+
+                mDlg.querySelector('#hc-members-close').onclick = function() { mDlg.remove(); };
+                mDlg.querySelector('#hc-members-close-btn').onclick = function() { mDlg.remove(); };
+                mDlg.onclick = function(e) { if (e.target === mDlg) mDlg.remove(); };
+
+                mDlg.querySelector('#hc-new-member-save').onclick = function() {
+                    var name = mDlg.querySelector('#hc-new-member-name').value.trim();
+                    var avatar = mDlg.querySelector('#hc-new-member-avatar').value.trim();
+                    if (!name) { _notify('请输入成员昵称', 'warning'); return; }
+                    var members2 = _getGroupMembers();
+                    for (var k = 0; k < members2.length; k++) {
+                        if (members2[k].name === name) { _notify('成员已存在', 'warning'); return; }
+                    }
+                    members2.push({ name: name, avatar: avatar || '' });
+                    localStorage.setItem('moments_group_members', JSON.stringify(members2));
+                    _notify('已添加群成员 ' + name, 'success');
+                    mDlg.remove();
+                    showMembersDialog();
+                };
+
+                mDlg.querySelectorAll('.hc-member-edit').forEach(function(btn) {
+                    btn.onclick = function() {
+                        var oldName = this.dataset.name;
+                        var members3 = _getGroupMembers();
+                        var cur = null;
+                        for (var z = 0; z < members3.length; z++) {
+                            if (members3[z].name === oldName) { cur = members3[z]; break; }
+                        }
+                        if (!cur) return;
+                        var newName = prompt('成员昵称：', cur.name);
+                        if (!newName || !newName.trim()) return;
+                        var newAvatar = prompt('头像图片URL（可留空）：', cur.avatar || '');
+                        if (newAvatar === null) return;
+                        for (var z2 = 0; z2 < members3.length; z2++) {
+                            if (members3[z2].name === oldName) {
+                                members3[z2].name = newName.trim();
+                                members3[z2].avatar = newAvatar.trim();
+                                break;
+                            }
+                        }
+                        localStorage.setItem('moments_group_members', JSON.stringify(members3));
+                        _notify('已更新成员信息', 'success');
+                        mDlg.remove();
+                        showMembersDialog();
+                    };
+                });
+
+                mDlg.querySelectorAll('.hc-member-del').forEach(function(btn) {
+                    btn.onclick = function() {
+                        var name = this.dataset.name;
+                        if (!confirm('删除群成员 "' + name + '"？')) return;
+                        var members4 = _getGroupMembers().filter(function(m) { return m.name !== name; });
+                        localStorage.setItem('moments_group_members', JSON.stringify(members4));
+                        _notify('已删除成员', 'info');
+                        mDlg.remove();
+                        showMembersDialog();
+                    };
+                });
+            }
+
+            // 顶部 tab 切换
+            dlgInner.querySelectorAll('.hc-tab').forEach(function(btn) {
+                btn.onclick = function() {
+                    dlgInner.querySelectorAll('.hc-tab').forEach(function(b) {
+                        b.classList.remove('active');
+                        b.style.color = 'var(--text-secondary)';
+                        b.style.borderBottom = '2px solid transparent';
+                        b.style.fontWeight = '400';
+                    });
+                    this.classList.add('active');
+                    this.style.color = 'var(--text-primary)';
+                    this.style.borderBottom = '2px solid var(--accent-color)';
+                    this.style.fontWeight = '600';
+                    currentTab = this.dataset.tab;
+                    renderCabinet();
+                };
+            });
+
+            document.getElementById('hc-back').onclick = function() { dlg.remove(); };
+            document.getElementById('hc-add-member-btn').onclick = showMembersDialog;
+            dlg.onclick = function(e) { if (e.target === dlg) dlg.remove(); };
+
+            renderCabinet();
+        }
+
         // ===== 购买弹窗 =====
         function showBuyDialog(item) {
             var oldDlg = document.getElementById('hm-buy-dialog');
@@ -445,7 +726,6 @@
                     if (ww.myBalance < item.price) { _notify('心意币不足', 'warning'); return; }
                     ww.myBalance -= item.price;
                     _setWallet(ww);
-                    _addHistory({ id: _generateId(), itemId: item.id, name: item.name, emoji: item.emoji, price: item.price, ts: Date.now(), action: 'buy_and_send', to: selectedMember, note: note });
                     _sendGiftToMember(selectedMember, item, note);
                     dlg.remove();
                     refreshBalance();
@@ -661,6 +941,7 @@
         }
 
         document.getElementById('hm-back').onclick = function() { wrap.remove(); };
+        document.getElementById('hm-cabinet-btn').onclick = showCabinetDialog;
         document.getElementById('hm-wallet-btn').onclick = showWalletDialog;
         document.getElementById('hm-add-btn').onclick = showAddDialog;
         document.getElementById('hm-search').oninput = function() {
@@ -673,5 +954,5 @@
         refreshBalance();
     };
 
-    console.log('[心意集市] 模块已加载（双钱包 · 自定义商品 · 送礼走聊天不写朋友圈）');
+    console.log('[心意集市] 模块已加载（内置心意柜 · 送礼走聊天）');
 })();
