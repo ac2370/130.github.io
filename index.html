@@ -2428,7 +2428,7 @@
     <script src="js/onboarding.js"></script> 
     <script src="js/listeners.js"></script>
     <script src="js/app.js"></script>
-        <script>
+<script>
 (function() {
     'use strict';
 
@@ -2436,11 +2436,7 @@
     var LOCK_PASSWORD = '1314';
     // ★★★ 密码修改完记得提交 ★★★
 
-    var UNLOCK_KEY = 'chatUnlocked_v1';
-
-    if (sessionStorage.getItem(UNLOCK_KEY) === '1') {
-        return;
-    }
+    // 不存储解锁状态，每次打开网页都要重新输入
 
     function createLockScreen() {
         if (document.getElementById('lock-screen')) return;
@@ -2494,7 +2490,7 @@
                 hint.textContent = '✓ 验证成功';
                 hint.classList.remove('error');
                 hint.style.color = '#4ade80';
-                sessionStorage.setItem(UNLOCK_KEY, '1');
+                // 不再存储解锁状态，直接显示后淡出
                 lock.classList.add('hidden');
                 setTimeout(function() {
                     if (lock.parentNode) lock.parentNode.removeChild(lock);
@@ -2526,6 +2522,7 @@
         });
     }
 
+    // 每次加载都创建锁屏
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', createLockScreen);
     } else {
