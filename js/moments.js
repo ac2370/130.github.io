@@ -1,4 +1,4 @@
-// moments.js - 朋友圈功能（完整版 · 字卡动态版 · 群成员主动互动 + 对话链评论 · 头像跟随自定义 · 支持礼物卡图片）
+// moments.js - 朋友圈功能（完整版 · 字卡动态版 · 每日随机2-4条动态 · 头像跟随自定义 · 纯URL）
 (function() {
     'use strict';
 
@@ -11,7 +11,7 @@
     var REPLY_DELAY_MAX = 10 * 60 * 1000;
 
     // =============================================
-    // 字卡数据库
+    // 字卡数据库（来源于 动态.docx）
     // =============================================
     var CARD_DB = [
         "在呢", "我在", "我来了", "来喽", "嗯嗯", "嗯", "好哦😜", "好的✅", "没问题", "当然！",
@@ -374,9 +374,6 @@
         _setData(data);
     }
 
-    // =============================================
-    // 数据管理
-    // =============================================
     function _getData() {
         try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || { posts: [], lastGenerateDate: '' }; } catch(e) { return { posts: [], lastGenerateDate: '' }; }
     }
@@ -540,31 +537,71 @@
         }, delayMs);
     }
 
+    // =============================================
+    // 每日生成 partner 动态（每天随机 2~4 条，成员随机）
+    // =============================================
     function _forceGeneratePartnerPosts() {
         var data = _getData();
         var today = new Date().toDateString();
-        if (data.lastGenerateDate === today && data.posts.filter(function(p) { return p.author === 'partner'; }).length > 0) {
+
+        // 今天已经生成过 → 跳过
+        if (data.lastGenerateDate === today) {
+            console.log('[朋友圈] 今日已生成动态，跳过');
             return;
         }
-        data.posts = data.posts.filter(function(p) { return p.author !== 'partner'; });
+
         var members = _getGroupMembers();
         if (members.length === 0) {
+            console.log('[朋友圈] 群成员为空，无法生成动态');
             data.lastGenerateDate = today;
             _setData(data);
             return;
         }
-        var count = 2 + Math.floor(Math.random() * 4);
+
+        // 先清掉所有旧的 partner 帖子（保证每天只显示当天的 partner 动态）
+        data.posts = data.posts.filter(function(p) { return p.author !== 'partner'; });
+
+        // 随机 2~4 条
+        var count = 2 + Math.floor(Math.random() * 3);  // 2、3、4
+        console.log('[朋友圈] 今日生成 ' + count + ' 条成员动态');
+
         var now = new Date();
+        var nowMs = now.getTime();
+        // 今天的 0 点
+        var todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
+        var newPosts = [];
         for (var idx = 0; idx < count; idx++) {
+            // 随机选成员
             var member = members[Math.floor(Math.random() * members.length)];
             var text = _generatePartnerPostText();
-            var hours = Math.floor(Math.random() * 24);
-            var minutes = Math.floor(Math.random() * 60);
-            var seconds = Math.floor(Math.random() * 60);
-            var ts = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, seconds);
-            if (ts > now) ts = new Date(now.getTime() - Math.random() * 86400000);
-            _addPost('partner', text, ts.toISOString(), member.name, member.avatar || '');
+
+            // 时间戳：今天 0 点 ~ 现在 之间随机
+            var randomMs = todayStart + Math.random() * (nowMs - todayStart);
+            var ts = new Date(randomMs);
+
+            newPosts.push({
+                id: _generateId(),
+                author: 'partner',
+                text: text.trim(),
+                timestamp: ts.toISOString(),
+                likes: 0,
+                likedByMe: false,
+                comments: [],
+                memberName: member.name,
+                memberAvatar: member.avatar || ''
+            });
         }
+
+        // 按时间倒序插入（最新的在前）
+        newPosts.sort(function(a, b) {
+            return new Date(b.timestamp) - new Date(a.timestamp);
+        });
+
+        // 把新帖子拼接到 data.posts 前面
+        data.posts = newPosts.concat(data.posts);
+        if (data.posts.length > MAX_POSTS) data.posts = data.posts.slice(0, MAX_POSTS);
+
         data.lastGenerateDate = today;
         _setData(data);
     }
@@ -1075,33 +1112,13 @@
             var time = formatTime(post.timestamp);
             var commentCount = post.comments.length;
 
-            // ===== 正文区：礼物卡 vs 普通文字 =====
-            var bodyHtml;
-            if (post.isGift) {
-                var giftVisual;
-                if (post.giftImage) {
-                    giftVisual = '<img src="' + _esc(post.giftImage) + '" style="width:72px;height:72px;object-fit:cover;border-radius:14px;margin-bottom:8px;">';
-                } else {
-                    giftVisual = '<div style="font-size:56px;line-height:1;margin-bottom:8px;">' + _esc(post.giftEmoji || '🎁') + '</div>';
-                }
-                bodyHtml =
-                    '<div style="display:flex;flex-direction:column;align-items:center;padding:10px 0;">' +
-                        giftVisual +
-                        '<div style="font-size:15px;font-weight:600;color:var(--text-primary);margin-bottom:6px;">' + _esc(post.giftName || '礼物') + '</div>' +
-                        (post.giftNote ? '<div style="font-size:13px;color:var(--accent-color);margin-bottom:6px;font-style:italic;">「' + _esc(post.giftNote) + '」</div>' : '') +
-                        (post.giftText ? '<div style="font-size:13px;color:var(--text-secondary);line-height:1.6;text-align:center;padding:0 8px;">' + _esc(post.giftText) + '</div>' : '') +
-                    '</div>';
-            } else {
-                bodyHtml = _esc(post.text);
-            }
-
             html += '<div class="moments-post" data-id="' + post.id + '" style="background:rgba(var(--secondary-bg-rgb,255,255,255),0.85);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:16px;padding:16px 16px 12px;margin-bottom:14px;border:1px solid rgba(var(--border-color-rgb,0,0,0),0.06);box-shadow:0 1px 4px rgba(0,0,0,0.04);">' +
                 '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">' +
                     '<span style="font-size:20px;display:flex;align-items:center;justify-content:center;width:36px;height:36px;flex-shrink:0;">' + avatarHtml + '</span>' +
                     '<span style="font-weight:600;color:var(--text-primary);font-size:15px;">' + _esc(name) + '</span>' +
                     '<span style="font-size:12px;color:var(--text-secondary);margin-left:auto;">' + time + '</span>' +
                 '</div>' +
-                '<div style="font-size:16px;color:var(--text-primary);margin:4px 0 12px;word-wrap:break-word;line-height:1.7;padding-left:2px;">' + bodyHtml + '</div>' +
+                '<div style="font-size:16px;color:var(--text-primary);margin:4px 0 12px;word-wrap:break-word;line-height:1.7;padding-left:2px;">' + _esc(post.text) + '</div>' +
                 '<div style="display:flex;gap:20px;align-items:center;border-top:1px solid rgba(var(--border-color-rgb,0,0,0),0.06);padding-top:10px;">' +
                     '<button class="moments-like-btn" data-id="' + post.id + '" style="background:none;border:none;color:' + (post.likedByMe ? 'var(--accent-color)' : 'var(--text-secondary)') + ';font-size:14px;cursor:pointer;padding:4px 8px;border-radius:12px;display:flex;align-items:center;gap:4px;' + (post.likedByMe ? 'background:rgba(var(--accent-color-rgb),0.08);' : '') + '">' +
                         (post.likedByMe ? '❤️' : '🤍') + ' <span>' + post.likes + '</span>' +
@@ -1111,7 +1128,7 @@
                     '</button>' +
                     (isMe ? '<button class="moments-delete-btn" data-id="' + post.id + '" style="background:none;border:none;color:#ff6b6b;font-size:13px;cursor:pointer;padding:4px 8px;border-radius:12px;margin-left:auto;">🗑️</button>' : '') +
                 '</div>' +
-                (post.comments.length > 0 ? '<div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(var(--border-color-rgb),0,0,0.06);">' : '');
+                (post.comments.length > 0 ? '<div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(var(--border-color-rgb,0,0,0),0.06);">' : '');
 
             for (var ci = 0; ci < post.comments.length; ci++) {
                 var c = post.comments[ci];
@@ -1453,21 +1470,11 @@
         });
     };
 
-    // =============================================
-    // 给心意集市调用：送礼后刷新朋友圈
-    // =============================================
-    window.__momentsRefresh = function(tab, container) {
-        if (!container) return;
-        try {
-            renderTab(tab || 'me', container);
-        } catch(e) { console.warn('__momentsRefresh 失败', e); }
-    };
-
     window.showAvatarSettings = showAvatarSettings;
     window.editMyInfo = editMyInfo;
     window.editMember = editMember;
     window.addMember = addMember;
     window.removeMember = removeMember;
 
-    console.log('[朋友圈] 模块已加载（礼物卡支持图片 · __momentsRefresh 已暴露）');
+    console.log('[朋友圈] 模块已加载（每日随机2~4条 · 成员随机 · 对话链评论 · 头像跟随自定义）');
 })();
