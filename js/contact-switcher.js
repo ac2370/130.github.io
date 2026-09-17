@@ -1,7 +1,13 @@
-/* js/contact-switcher.js 最终修复版 */
+/* js/contact-switcher.js 最终稳定版 */
 (function() {
     function getCurrentRole() {
         return localStorage.getItem('active_contact_role') || 'role_A';
+    }
+
+    // 页面加载时清理 URL 中的 role 参数
+    if (window.location.search.includes('role=')) {
+        const cleanUrl = window.location.pathname + window.location.hash;
+        window.history.replaceState({}, document.title, cleanUrl);
     }
 
     const switchBtn = document.getElementById('switch-contact-btn');
@@ -18,27 +24,12 @@
                 nextName = '梦角A';
             }
 
-            // 直接调用 core.js 里的切换函数，不要刷新页面
+            // 直接调用挂载在 window 上的函数，不再做 typeof 判断
             if (typeof window.switchActiveContact === 'function') {
                 window.switchActiveContact(nextRole, nextName);
             } else {
                 console.error('[switch-contact] window.switchActiveContact 未定义，请检查 core.js 是否更新');
-                if (typeof showNotification === 'function') {
-                    showNotification('切换失败：核心函数未加载', 'error');
-                }
             }
         });
     }
-
-    // 页面加载时同步一次角色状态（避免异常）
-    window.addEventListener('DOMContentLoaded', function() {
-        setTimeout(() => {
-            const activeRole = getCurrentRole();
-            if (activeRole === 'role_B' && window.SESSION_ID !== 'role_B') {
-                if (typeof window.switchActiveContact === 'function') {
-                    window.switchActiveContact('role_B', '梦角B');
-                }
-            }
-        }, 1000);
-    });
 })();
