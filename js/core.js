@@ -280,6 +280,28 @@ autoSendInterval: 5,
 
 
 const loadData = async () => {
+        const loadData = async () => {
+    // 加上这个“超时保险”，如果 5 秒还没加载完，强制跳过加载动画
+    const _loadingTimeout = setTimeout(() => {
+        const welcomeAnim = document.getElementById('welcome-animation');
+        if (welcomeAnim) {
+            welcomeAnim.style.display = 'none';
+            document.body.classList.remove('welcome-animation-active');
+            if (typeof showNotification === 'function') {
+                showNotification('加载超时，已跳过欢迎动画（iOS 缓存机制）', 'warning', 3000);
+            }
+        }
+    }, 5000); // 5秒超时
+
+    try {
+        settings = getDefaultSettings();
+        // ... 剩下的原代码不动 ...
+    } catch (e) {
+        // ...
+    } finally {
+        clearTimeout(_loadingTimeout); // 加载完成后清除超时
+    }
+}
     try {
         settings = getDefaultSettings();
 
