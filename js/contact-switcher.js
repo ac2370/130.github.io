@@ -1,4 +1,4 @@
-/* js/contact-switcher.js 纯内存切换器（修复版） */
+/* js/contact-switcher.js 内存级切换器（最终修复版） */
 (function() {
     function getCurrentRole() {
         return localStorage.getItem('active_contact_role') || 'role_A';
@@ -9,26 +9,26 @@
             showNotification(`正在切换至：${nextName}`, 'info', 1000);
         }
 
-        // 1. 保存当前角色的数据
+        // 1. 保存当前角色的数据到存储（此时 SESSION_ID 还是旧的）
         if (typeof saveData === 'function') {
             await saveData();
         }
 
-        // 2. 强制修改全局 SESSION_ID 和 localStorage
+        // 2. 修改全局 SESSION_ID（这是关键，改完后 getStorageKey 就会用新前缀）
         window.SESSION_ID = nextRole;
         window.currentContactId = nextRole;
         localStorage.setItem('active_contact_role', nextRole);
 
-        // 3. 清空界面和内存
+        // 3. 清空界面和内存（防止旧消息显示在新角色里）
         const chatContainer = document.getElementById('chat-container');
         if (chatContainer) chatContainer.innerHTML = '';
         if (window.messages) window.messages = [];
 
-        // 4. 重新加载新角色的数据（会触发 getStorageKey 读取 role_B 的数据）
+        // 4. 重新加载新角色的数据（getStorageKey 此时已指向新角色）
         if (typeof loadData === 'function') {
             await loadData();
         } else {
-            // 保底：如果找不到 loadData，只能刷新页面
+            // 保底方案：如果 loadData 不存在，才刷新页面
             window.location.reload();
             return;
         }
@@ -41,6 +41,10 @@
                 window.settings.partnerName = nextName;
             }
         }
+
+        if (typeof showNotification === 'function') {
+            showNotification(`已切换至 ${nextName} ✦`, 'success', 1500);
+        }
     }
 
     const switchBtn = document.getElementById('switch-contact-btn');
@@ -48,7 +52,7 @@
         switchBtn.addEventListener('click', function() {
             const current = getCurrentRole();
             
-            // 如果当前是 role_A，则切到 B；否则切回 A
+            // 逻辑切换：A -> B，B -> A
             if (current === 'role_A') {
                 switchRole('role_B', '梦角B');
             } else {
@@ -57,7 +61,7 @@
         });
     }
 
-    // 页面打开时，如果 localStorage 记录的是 B，就自动切到 B
+    // 页面初次打开时，检查 localStorage，如果是 B 就自动切换到 B
     window.addEventListener('DOMContentLoaded', function() {
         const activeRole = getCurrentRole();
         if (activeRole === 'role_B') {
