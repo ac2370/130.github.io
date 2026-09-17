@@ -1,11 +1,20 @@
-/* js/contact-switcher.js 角色切换器（Hash 兼容最终版） */
+/* js/contact-switcher.js 角色切换器（兼容哈希路由版） */
 (function() {
-    // 从 URL 的 hash 中解析角色，例如 #role_B/
+    // ... 中间的代码不变 ...
+    // 获取当前角色，从 URL 的 hash 中找，例如 #role_B
+    // 如果你是在 #/ 这种路由后面，我们单独加个参数
     function getCurrentRole() {
-        const hash = window.location.hash; // 例如 #role_B/
+        // 尝试从 URL 的 search 参数中获取
+        const urlParams = new URLSearchParams(window.location.search);
+        let role = urlParams.get('role');
+        if (role) return role;
+
+        // 尝试从 URL 的 hash 中获取，比如 #role_B
+        const hash = window.location.hash;
         if (hash.includes('role_B')) return 'role_B';
         if (hash.includes('role_A')) return 'role_A';
-        // 默认角色
+
+        // 默认角色 A
         return 'role_A';
     }
 
@@ -26,22 +35,16 @@
                 showNotification(`正在切换至：${nextName}`, 'info', 1500);
             }
 
-            // --- 核心修改：使用 Hash 路由代替 Search 参数 ---
-            // 获取当前 hash 后面原本的路径部分（比如 / 或 /session1）
-            let currentHashPath = window.location.hash.replace(/^#/, '');
-            // 如果原本的 hash 是 role_A/，去掉 role_A 保留后面的部分
-            currentHashPath = currentHashPath.replace(/^role_[AB]\//, '');
-            if (!currentHashPath) currentHashPath = '/';
-
-            // 重新拼接 URL
-            const newUrl = new URL(window.location.href);
-            newUrl.hash = `${nextRole}${currentHashPath}`; // 结果是 #role_B/ 或 #role_B/session1
+            // 针对你的 Hash 路由修改跳转逻辑
+            const url = new URL(window.location.href);
             
+            // 重要：把 hash 清掉（例如 #/），然后再拼接 role 参数
+            // 这样加载后，你的 SESSION_ID 读取逻辑能直接读到 ?role=role_B
+            url.hash = ''; 
+            url.searchParams.set('role', nextRole);
+
             setTimeout(() => {
-                // 使用 replace 防止刷新时的历史记录堆栈混乱
-                window.location.replace(newUrl.toString());
-                // 如果是单页应用，我们还可以手动触发一下数据重载
-                // 但考虑到原有逻辑是刷新页面，这里直接用 replace 最安全
+                window.location.href = url.toString();
             }, 600); 
         });
     }
