@@ -1,4 +1,4 @@
-/* 核心应用逻辑：数据加载保存、消息渲染、会话管理等 - 已整合多角色切换支持 */
+/* 核心应用逻辑：数据加载保存、消息渲染、会话管理等 - 已整合多角色切换与高级功能隔离 */
 
         function clearAllAppData() {
     const overlay = document.createElement('div');
@@ -299,7 +299,14 @@ const loadData = async () => {
             localforage.getItem(getStorageKey('myStickerLibrary')),
             localforage.getItem(getStorageKey('customReplyGroups')),
             localforage.getItem(getStorageKey('customPokeGroups')),
-            localforage.getItem(getStorageKey('customStatusGroups'))
+            localforage.getItem(getStorageKey('customStatusGroups')),
+            // === 高级功能模块隔离 ===
+            localforage.getItem(getStorageKey('moodData')),
+            localforage.getItem(getStorageKey('envelopeData')),
+            localforage.getItem(getStorageKey('momentsData')),
+            localforage.getItem(getStorageKey('dreamSurveyData')),
+            localforage.getItem(getStorageKey('heartMarketData')),
+            localforage.getItem(getStorageKey('groupChatSettings'))
         ]);
         const getVal = (index) => results[index].status === 'fulfilled' ? results[index].value : null;
 
@@ -324,6 +331,13 @@ const loadData = async () => {
         const savedReplyGroups = getVal(18);
         const savedPokeGroups = getVal(19);
         const savedStatusGroups = getVal(20);
+        // === 高级功能模块结果 ===
+        const savedMoodData        = getVal(21);
+        const savedEnvelopeData    = getVal(22);
+        const savedMomentsData     = getVal(23);
+        const savedDreamSurveyData = getVal(24);
+        const savedHeartMarketData = getVal(25);
+        const savedGroupChatSettings = getVal(26);
 
         if (savedPartnerPersonas) partnerPersonas = savedPartnerPersonas;
         if (savedSettings) Object.assign(settings, savedSettings);
@@ -397,6 +411,14 @@ const loadData = async () => {
         window._customReplies = customReplies;
         window._CONSTANTS = CONSTANTS;
 
+        // === 高级功能模块赋值 ===
+        if (savedMoodData)         window.moodData         = savedMoodData;
+        if (savedEnvelopeData)     window.envelopeData     = savedEnvelopeData;
+        if (savedMomentsData)      window.momentsData      = savedMomentsData;
+        if (savedDreamSurveyData)  window.dreamSurveyData  = savedDreamSurveyData;
+        if (savedHeartMarketData)  window.heartMarketData  = savedHeartMarketData;
+        if (savedGroupChatSettings) window.groupChatSettings = savedGroupChatSettings;
+
         if (DOMElements && DOMElements.partner && DOMElements.me) {
             updateAvatar(DOMElements.partner.avatar, partnerAvatarSrc);
             updateAvatar(DOMElements.me.avatar, myAvatarSrc);
@@ -414,6 +436,7 @@ const loadData = async () => {
 
         try { await initMoodData(); } catch(e) { console.warn("心情数据加载失败", e); }
         try { await loadEnvelopeData(); } catch(e) { console.warn("信封数据加载失败", e); }
+        try { if (typeof initMoments === 'function') await initMoments(); } catch(e) { console.warn("朋友圈数据加载失败", e); }
         
         displayedMessageCount = HISTORY_BATCH_SIZE;
         
@@ -573,9 +596,16 @@ const saveData = async () => {
         { key: 'customIntros',           val: () => localforage.setItem(getStorageKey('customIntros'), customIntros) },
         { key: 'stickerLibrary',         val: () => localforage.setItem(getStorageKey('stickerLibrary'), stickerLibrary) },
         { key: 'myStickerLibrary',       val: () => localforage.setItem(getStorageKey('myStickerLibrary'), myStickerLibrary) },
-        { key: 'customThemes',           val: () => localforage.setItem(`${APP_PREFIX}customThemes`, customThemes) },
-        { key: 'themeSchemes',           val: () => localforage.setItem(`${APP_PREFIX}themeSchemes`, themeSchemes) },
+        { key: 'customThemes',           val: () => localforage.setItem(getStorageKey('customThemes'), customThemes) },
+        { key: 'themeSchemes',           val: () => localforage.setItem(getStorageKey('themeSchemes'), themeSchemes) },
         { key: 'chatMessages',           val: () => localforage.setItem(getStorageKey('chatMessages'), messages) },
+        // === 高级功能模块数据隔离 ===
+        { key: 'moodData',               val: () => { if (typeof window.moodData !== 'undefined') return localforage.setItem(getStorageKey('moodData'), window.moodData); } },
+        { key: 'envelopeData',           val: () => { if (typeof window.envelopeData !== 'undefined') return localforage.setItem(getStorageKey('envelopeData'), window.envelopeData); } },
+        { key: 'momentsData',            val: () => { if (typeof window.momentsData !== 'undefined') return localforage.setItem(getStorageKey('momentsData'), window.momentsData); } },
+        { key: 'dreamSurveyData',        val: () => { if (typeof window.dreamSurveyData !== 'undefined') return localforage.setItem(getStorageKey('dreamSurveyData'), window.dreamSurveyData); } },
+        { key: 'heartMarketData',        val: () => { if (typeof window.heartMarketData !== 'undefined') return localforage.setItem(getStorageKey('heartMarketData'), window.heartMarketData); } },
+        { key: 'groupChatSettings',      val: () => { if (typeof window.groupChatSettings !== 'undefined') return localforage.setItem(getStorageKey('groupChatSettings'), window.groupChatSettings); } }
     ];
 
     const partnerAvatarSrc = (() => {
