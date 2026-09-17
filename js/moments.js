@@ -1,4 +1,4 @@
-// moments.js - 朋友圈功能（完整版 · 字卡动态版 · 每日随机2-4条动态 · 头像跟随自定义 · 纯URL）
+// moments.js - 朋友圈功能（完整版 · 字卡动态版 · 每日随机2-4条动态 · 头像跟随自定义 · 纯URL · 多角色隔离版）
 (function() {
     'use strict';
 
@@ -9,6 +9,18 @@
     var AUTO_INTERACT_PROBABILITY = 0.6;
     var REPLY_DELAY_MIN = 30 * 1000;
     var REPLY_DELAY_MAX = 10 * 60 * 1000;
+
+    // 安全获取隔离键：优先使用 getStorageKey，如果它不存在则回退到原键名
+    function _sk(key) {
+        try {
+            if (typeof getStorageKey === 'function') {
+                return getStorageKey(key);
+            }
+        } catch (e) {
+            console.warn('[朋友圈] getStorageKey 调用失败，回退到原始键名:', key, e);
+        }
+        return key;
+    }
 
     // =============================================
     // 字卡数据库（来源于 动态.docx）
@@ -241,9 +253,10 @@
         return result;
     }
 
+    // ===== 群成员（隔离键）=====
     function _getGroupMembers() {
         try {
-            var stored = localStorage.getItem('moments_group_members');
+            var stored = localStorage.getItem(_sk('moments_group_members'));
             if (stored) {
                 var parsed = JSON.parse(stored);
                 if (Array.isArray(parsed)) {
@@ -255,7 +268,7 @@
     }
 
     function _saveGroupMembers(members) {
-        localStorage.setItem('moments_group_members', JSON.stringify(members));
+        localStorage.setItem(_sk('moments_group_members'), JSON.stringify(members));
     }
 
     function _getMyName() {
@@ -280,26 +293,27 @@
         return Date.now() + '_' + Math.random().toString(36).substr(2, 6);
     }
 
+    // ===== 封面（隔离键）=====
     function _getCoverImage() {
-        try { return localStorage.getItem(COVER_KEY) || ''; } catch(e) { return ''; }
+        try { return localStorage.getItem(_sk(COVER_KEY)) || ''; } catch(e) { return ''; }
     }
-    function _setCoverImage(data) { localStorage.setItem(COVER_KEY, data); }
-    function _clearCoverImage() { localStorage.removeItem(COVER_KEY); }
+    function _setCoverImage(data) { localStorage.setItem(_sk(COVER_KEY), data); }
+    function _clearCoverImage() { localStorage.removeItem(_sk(COVER_KEY)); }
 
     var MY_NAME_KEY = 'moments_my_name';
     var MY_AVATAR_KEY = 'moments_my_avatar';
 
     function _getMyNameSetting() {
-        try { return localStorage.getItem(MY_NAME_KEY) || _getMyName(); } catch(e) { return _getMyName(); }
+        try { return localStorage.getItem(_sk(MY_NAME_KEY)) || _getMyName(); } catch(e) { return _getMyName(); }
     }
     function _setMyNameSetting(name) {
-        localStorage.setItem(MY_NAME_KEY, name);
+        localStorage.setItem(_sk(MY_NAME_KEY), name);
     }
     function _getMyAvatarSetting() {
-        try { return localStorage.getItem(MY_AVATAR_KEY) || ''; } catch(e) { return ''; }
+        try { return localStorage.getItem(_sk(MY_AVATAR_KEY)) || ''; } catch(e) { return ''; }
     }
     function _setMyAvatarSetting(data) {
-        localStorage.setItem(MY_AVATAR_KEY, data);
+        localStorage.setItem(_sk(MY_AVATAR_KEY), data);
     }
 
     function _getMemberAvatar(name) {
@@ -374,10 +388,11 @@
         _setData(data);
     }
 
+    // ===== 主数据（隔离键）=====
     function _getData() {
-        try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || { posts: [], lastGenerateDate: '' }; } catch(e) { return { posts: [], lastGenerateDate: '' }; }
+        try { return JSON.parse(localStorage.getItem(_sk(STORAGE_KEY))) || { posts: [], lastGenerateDate: '' }; } catch(e) { return { posts: [], lastGenerateDate: '' }; }
     }
-    function _setData(data) { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+    function _setData(data) { localStorage.setItem(_sk(STORAGE_KEY), JSON.stringify(data)); }
 
     function _getPosts() {
         var data = _getData();
@@ -544,7 +559,6 @@
         var data = _getData();
         var today = new Date().toDateString();
 
-        // 今天已经生成过 → 跳过
         if (data.lastGenerateDate === today) {
             console.log('[朋友圈] 今日已生成动态，跳过');
             return;
@@ -558,25 +572,20 @@
             return;
         }
 
-        // 先清掉所有旧的 partner 帖子（保证每天只显示当天的 partner 动态）
         data.posts = data.posts.filter(function(p) { return p.author !== 'partner'; });
 
-        // 随机 2~4 条
-        var count = 2 + Math.floor(Math.random() * 3);  // 2、3、4
+        var count = 2 + Math.floor(Math.random() * 3);
         console.log('[朋友圈] 今日生成 ' + count + ' 条成员动态');
 
         var now = new Date();
         var nowMs = now.getTime();
-        // 今天的 0 点
         var todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 
         var newPosts = [];
         for (var idx = 0; idx < count; idx++) {
-            // 随机选成员
             var member = members[Math.floor(Math.random() * members.length)];
             var text = _generatePartnerPostText();
 
-            // 时间戳：今天 0 点 ~ 现在 之间随机
             var randomMs = todayStart + Math.random() * (nowMs - todayStart);
             var ts = new Date(randomMs);
 
@@ -593,12 +602,10 @@
             });
         }
 
-        // 按时间倒序插入（最新的在前）
         newPosts.sort(function(a, b) {
             return new Date(b.timestamp) - new Date(a.timestamp);
         });
 
-        // 把新帖子拼接到 data.posts 前面
         data.posts = newPosts.concat(data.posts);
         if (data.posts.length > MAX_POSTS) data.posts = data.posts.slice(0, MAX_POSTS);
 
@@ -832,7 +839,7 @@
             var avatarUrl = document.getElementById('edit-my-avatar-url-input').value.trim();
             _setMyNameSetting(name);
             if (avatarUrl) _setMyAvatarSetting(avatarUrl);
-            else localStorage.removeItem(MY_AVATAR_KEY);
+            else localStorage.removeItem(_sk(MY_AVATAR_KEY));
             wrap.remove();
             var avatarModal = document.getElementById('avatar-settings-modal');
             if (avatarModal) avatarModal.remove();
@@ -1476,5 +1483,5 @@
     window.addMember = addMember;
     window.removeMember = removeMember;
 
-    console.log('[朋友圈] 模块已加载（每日随机2~4条 · 成员随机 · 对话链评论 · 头像跟随自定义）');
+    console.log('[朋友圈] 模块已加载（每日随机2~4条 · 成员随机 · 对话链评论 · 头像跟随自定义 · 多角色隔离版）');
 })();
