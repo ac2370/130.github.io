@@ -1,4 +1,4 @@
-/*核心应用逻辑：数据加载保存、消息渲染、会话管理等*/
+/* 核心应用逻辑：数据加载保存、消息渲染、会话管理等 - 已整合多角色切换支持 */
 
         function clearAllAppData() {
     const overlay = document.createElement('div');
@@ -38,14 +38,12 @@
         closeDialog();
         if (confirm('确定要清除当前会话的所有消息吗？此操作无法恢复！')) {
             messages = [];
-            window.messages = messages; // 双保险：同步 window 属性
+            window.messages = messages;
             displayedMessageCount = HISTORY_BATCH_SIZE;
 
-            // 立即清除 localStorage 备份，防止 _tryRecoverFromBackup 在 IndexedDB 写入前恢复旧消息
             try { localStorage.removeItem('BACKUP_V1_critical'); } catch(e) {}
             try { localStorage.removeItem('BACKUP_V1_timestamp'); } catch(e) {}
 
-            // 直接写入 IndexedDB（跳过 500ms 防抖），确保刷新后不恢复
             localforage.setItem(getStorageKey('chatMessages'), []).catch(() => {});
 
             renderMessages();
@@ -175,7 +173,6 @@ autoSendInterval: 5,
         readNoReplyChance: 0.2,
         timeFormat: 'HH:mm',
         customSoundUrl: '',
-        // 音效：两方分别可选（若对应 URL 为空则使用内置预设）
         mySendSoundPreset: 'tone_low',
         mySendCustomSoundUrl: '',
         partnerMessageSoundPreset: 'tone_low',
@@ -194,13 +191,9 @@ autoSendInterval: 5,
         function renderBackgroundGallery() {
             const list = document.getElementById('background-gallery-list');
             if (!list) return;
-
             list.innerHTML = '';
-
-            
             const addBtn = document.createElement('div');
             addBtn.className = 'bg-item bg-add-btn';
-            
             addBtn.innerHTML = '<i class="fas fa-plus"></i><span></span>';
             addBtn.onclick = () => document.getElementById('bg-gallery-input').click();
             list.appendChild(addBtn);
@@ -210,9 +203,7 @@ autoSendInterval: 5,
             savedBackgrounds.forEach((bg, index) => {
                 const item = document.createElement('div');
                 let isActive = false;
-
                 if (currentBg && currentBg === bg.value) isActive = true;
-
                 item.className = `bg-item ${isActive ? 'active': ''}`;
 
                 if (bg.type === 'image') {
@@ -240,7 +231,6 @@ autoSendInterval: 5,
                         if (confirm('确定删除这张背景图吗？')) {
                             savedBackgrounds.splice(index, 1);
                             saveBackgroundGallery();
-
                             if (isActive) {
                                 removeBackground(); 
                                 renderBackgroundGallery();
@@ -251,11 +241,9 @@ autoSendInterval: 5,
                     };
                     item.appendChild(delBtn);
                 }
-
                 list.appendChild(item);
             });
         }
-
 
 
         function saveBackgroundGallery() {
@@ -281,16 +269,15 @@ autoSendInterval: 5,
 
 const loadData = async () => {
     try {
-        // 【新增】切换角色后，清空当前内存中的消息和状态，防止旧数据闪现
+        // 【必须】切换角色时，先清空内存和界面，防止旧数据闪现
         messages = []; 
         window.messages = [];
         if (typeof DOMElements !== 'undefined' && DOMElements.chatContainer) {
-            DOMElements.chatContainer.innerHTML = ''; // 清空聊天界面
+            DOMElements.chatContainer.innerHTML = ''; 
         }
 
         settings = getDefaultSettings();
 
-        
         const results = await Promise.allSettled([
             localforage.getItem(getStorageKey('chatSettings')),
             localforage.getItem(getStorageKey('chatMessages')),
@@ -339,7 +326,6 @@ const loadData = async () => {
         const savedStatusGroups = getVal(20);
 
         if (savedPartnerPersonas) partnerPersonas = savedPartnerPersonas;
-
         if (savedSettings) Object.assign(settings, savedSettings);
 
         if (settings.showPartnerNameInChat !== undefined) {
@@ -635,8 +621,6 @@ const saveData = async () => {
 };
 
         function initializeRandomUI() {
-
-
             document.querySelector('.header-motto').textContent = getRandomItem(CONSTANTS.HEADER_MOTTOS);
 if (customMottos && customMottos.length > 0) {
     document.querySelector('.header-motto').textContent = getRandomItem(customMottos);
@@ -645,7 +629,6 @@ if (customMottos && customMottos.length > 0) {
 }
             const placeholder = "";
             DOMElements.messageInput.placeholder = placeholder.length > 20 ? placeholder.substring(0, 20) + "...": placeholder;
-
 
             const starsContainer = document.getElementById('stars-container');
             starsContainer.innerHTML = '';
@@ -714,7 +697,6 @@ if (customMottos && customMottos.length > 0) {
             if (loaderBarEl) {
                 setTimeout(() => loaderBarEl.classList.add('pulsing'), 300);
             }
-
 
             const welcomeIcon = getRandomItem(CONSTANTS.WELCOME_ICONS);
 document.querySelector('.logo-icon-main').innerHTML = `<i class="${welcomeIcon}"></i>`;
@@ -1220,7 +1202,6 @@ const addMessage = (message) => {
         DOMElements.emptyState.style.display = 'none';
     }
 
-    // --- Update previous message if needed ---
     const existingWrappers = container.querySelectorAll('.message-wrapper');
     const lastWrapper = existingWrappers.length > 0 ? existingWrappers[existingWrappers.length - 1] : null;
     if (lastWrapper && prevMsg) {
@@ -1235,7 +1216,6 @@ const addMessage = (message) => {
         }
     }
     
-    // --- Append new message ---
     let lastSenderRef = { current: null };
     if (prevMsg) {
         const prevGroupMember = (prevMsg.sender !== 'user' && typeof getGroupMemberForMessage === 'function') ? getGroupMemberForMessage(prevMsg.id) : null;
@@ -1333,7 +1313,6 @@ const addMessage = (message) => {
         };
         function updateReplyPreview() { window.updateReplyPreview(); }
 
-        // ── 对方拍一拍核心逻辑（提取为独立函数，供随机触发和测试指令共用）──
         window._triggerPartnerPoke = function() {
             let pokeAction = null;
 
@@ -1388,7 +1367,6 @@ const addMessage = (message) => {
             const imageFile = DOMElements.imageInput.files[0];
             if (!text && !imageFile && type === 'normal') return;
 
-            // ── 斜杠指令拦截 ──
             if (text && text.startsWith('/') && type === 'normal') {
                 const cmd = text.replace(/\s+/g, '').toLowerCase();
                 if (cmd === '/测试拍一拍' || cmd === '/testpoke') {
@@ -1641,7 +1619,6 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                 }
             }
             if (Math.random() < 0.03) {
-                // ── 对方拍一拍：调用提取的通用函数（同时供 /测试拍一拍 指令使用）──
                 if (typeof window._triggerPartnerPoke === 'function') window._triggerPartnerPoke();
                 return;
             }
@@ -1670,7 +1647,6 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                 return;
             }
 
-            // 确认有可用回复后再展示“正在输入中”，避免空转
             showTypingIndicator();
             let delay = 0;
             const recentUserMsgs = settings.replyEnabled
@@ -1682,7 +1658,6 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                 setTimeout(() => {
                     try {
                     const replyPool = replyPoolOnce;
-                    // 被屏蔽或无效项直接换下一个，尽量保证每次都产出可用回复
                     let replyText = '';
                     for (let t = 0; t < 6; t++) {
                         const picked = replyPool[Math.floor(Math.random() * replyPool.length)];
@@ -1797,7 +1772,6 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                     }
                     } catch (e) {
                         console.error('[simulateReply] 渲染/回填出错:', e);
-                        // 机制性兜底：出错时至少让“正在输入中”消失，避免假死
                         try {
                             (function(){
                                 try { if (window._typingIndicatorAutoHideTimer) { clearTimeout(window._typingIndicatorAutoHideTimer); window._typingIndicatorAutoHideTimer = null; } } catch (e2) {}
@@ -1940,7 +1914,6 @@ function showModal(modalElement, focusElement = null) {
                         exportModules: []
                     };
                     if (inclMsgs)     {
-                        // 永远省略图片字段，只导出文字等基础信息，减小体积
                         exportObj.messages = messages.map(m => {
                             const { image, ...rest } = m;
                             return rest;
@@ -1962,7 +1935,6 @@ function showModal(modalElement, focusElement = null) {
                     if (inclAnn)      { exportObj.anniversaries = anniversaries; exportObj.exportModules.push('anniversaries'); }
                     if (inclThemes)   {
                         exportObj.customThemes = customThemes;
-                        // stickerLibrary 体积较大，这里不再随聊天备份导出
                         exportObj.exportModules.push('themes');
                     }
 
@@ -2010,8 +1982,6 @@ function showModal(modalElement, focusElement = null) {
                     if (rawText.charCodeAt(0) === 0xFEFF) rawText = rawText.slice(1);
                     let importedData = JSON.parse(rawText);
 
-                    // 兼容全量备份格式（type:'full' 或含 indexedDB/localforage 字段）
-                    // 将其转换为 importChatHistory 能识别的标准字段
                     if (importedData && typeof importedData === 'object' &&
                         (importedData.type === 'full' || importedData.indexedDB || importedData.localforage) &&
                         !importedData.messages && !importedData.settings) {
@@ -2020,7 +1990,6 @@ function showModal(modalElement, focusElement = null) {
                         const ls  = importedData.localStorage || {};
                         const allKv = Object.assign({}, idb, ls);
 
-                        // 找到 sessionId（取第一个带 _chatMessages 的键前缀）
                         let detectedSid = null;
                         const appPfx = importedData.appPrefix || 'CHAT_APP_V3_';
                         for (const k of Object.keys(allKv)) {
@@ -2037,7 +2006,6 @@ function showModal(modalElement, focusElement = null) {
                                 const v = allKv[pfxSid + suffix];
                                 if (v !== undefined && v !== null) return v;
                             }
-                            // 无前缀回退
                             return allKv[suffix] !== undefined ? allKv[suffix] : null;
                         };
                         const parseVal = (v) => {
@@ -2061,7 +2029,6 @@ function showModal(modalElement, focusElement = null) {
                             converted.settings = chatSettings;
                             converted.exportModules.push('settings');
                         }
-                        // 额外的 localStorage 设置字段
                         const dgCustomData = parseVal(ls['dg_custom_data'] !== undefined ? ls['dg_custom_data'] : null);
                         if (dgCustomData) converted.dgCustomData = dgCustomData;
                         const dgStatusPool = parseVal(ls['dg_status_pool'] !== undefined ? ls['dg_status_pool'] : null);
@@ -2190,27 +2157,22 @@ function showModal(modalElement, focusElement = null) {
             reader.readAsText(file);
         }
 
-        // ── 对方状态更新核心逻辑（提取为独立函数，供定时触发和 /测试状态更新 指令共用）──
         window._triggerStatusChange = function() {
             let newStatus = null;
 
             const groups = window.customStatusGroups || [];
             const allStatuses = (typeof customStatuses !== 'undefined' ? customStatuses : []) || [];
 
-            // 只保留「启用」且「有内容」的分组，内容必须也在 allStatuses 里存在
             const enabledGroups = groups.filter(function(g) {
                 return !g.disabled && Array.isArray(g.items) && g.items.length > 0;
             });
 
-            // 收集所有在分组内的状态文本
             const groupedItems = new Set();
             enabledGroups.forEach(function(g) { g.items.forEach(function(t) { groupedItems.add(t); }); });
 
-            // 未分组的状态
             const ungroupedStatuses = allStatuses.filter(function(t) { return !groupedItems.has(t); });
 
             if (enabledGroups.length > 0) {
-                // 有启用分组时：随机选一个分组 → 从该分组随机选一条状态
                 const pickedGroup = enabledGroups[Math.floor(Math.random() * enabledGroups.length)];
                 const groupPool = pickedGroup.items.filter(function(t) { return allStatuses.includes(t); });
                 if (groupPool.length > 0) {
@@ -2218,7 +2180,6 @@ function showModal(modalElement, focusElement = null) {
                 }
             }
 
-            // 分组里没找到内容时，退回到：未分组状态 → 全部 customStatuses → 内置 PARTNER_STATUSES
             if (!newStatus && ungroupedStatuses.length > 0) {
                 newStatus = ungroupedStatuses[Math.floor(Math.random() * ungroupedStatuses.length)];
             }
@@ -2290,19 +2251,19 @@ function showModal(modalElement, focusElement = null) {
             }
         }
 
+// 【核心修改】彻底剥离 URL 参数，只从 localStorage 读取角色
 window.initializeSession = async function() {
     await migrateData();
 
     const sessionsData = await localforage.getItem(`${APP_PREFIX}sessionList`);
     sessionList = sessionsData || [];
 
-    // 【核心修改】彻底忽略 URL 参数，只从 localStorage 读取当前角色
     let savedRole = localStorage.getItem('active_contact_role');
 
     if (savedRole) {
         SESSION_ID = savedRole;
     } else {
-        // 如果没有记录，才使用默认逻辑
+        // 没有记录时，使用默认逻辑
         if (sessionList.length > 0) {
             const lastId = await localforage.getItem(`${APP_PREFIX}lastSessionId`);
             SESSION_ID = lastId && sessionList.some(s => s.id === lastId) ? lastId : sessionList[0].id;
@@ -2313,11 +2274,10 @@ window.initializeSession = async function() {
         localStorage.setItem('active_contact_role', 'role_A');
     }
 
-    // 保存当前角色 ID 到全局
     window.currentContactId = SESSION_ID; 
     await localforage.setItem(`${APP_PREFIX}lastSessionId`, SESSION_ID);
 
-    // 清理 URL 里多余的 ?role= 参数（防止你手机上的历史链接干扰）
+    // 清理 URL 里多余的 ?role= 参数（防止手机上的历史链接干扰）
     if (window.location.search.includes('role=')) {
         const cleanUrl = window.location.pathname + window.location.hash;
         window.history.replaceState({}, document.title, cleanUrl);
