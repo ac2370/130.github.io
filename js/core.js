@@ -281,6 +281,15 @@ autoSendInterval: 5,
 
 const loadData = async () => {
     try {
+        // 【新增】切换角色后，清空当前内存中的消息和状态，防止旧数据闪现
+        messages = []; 
+        window.messages = [];
+        if (typeof DOMElements !== 'undefined' && DOMElements.chatContainer) {
+            DOMElements.chatContainer.innerHTML = ''; // 清空聊天界面
+        }
+
+        settings = getDefaultSettings();
+        // ... 下面的代码保持不变 ...
         settings = getDefaultSettings();
 
         
