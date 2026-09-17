@@ -2289,41 +2289,23 @@ window.initializeSession = async function() {
     const sessionsData = await localforage.getItem(`${APP_PREFIX}sessionList`);
     sessionList = sessionsData || [];
 
-    // 1. 先检查 URL 的 Hash 中是否包含我们定义的角色（这是移动端最稳的方案）
-    const hash = window.location.hash.replace(/^#/, ''); // 去掉 #
-    let roleFromHash = null;
-    
-    if (hash.startsWith('role_A')) {
-        roleFromHash = 'role_A';
-    } else if (hash.startsWith('role_B')) {
-        roleFromHash = 'role_B';
-    }
+    // 从 URL 参数获取当前要用的角色ID（用 ?role=xxx 区分）
+    const urlParams = new URLSearchParams(window.location.search);
+    let roleFromUrl = urlParams.get('role');
 
-    // 2. 如果 Hash 里有角色ID，优先使用它
-    if (roleFromHash) {
-        SESSION_ID = roleFromHash;
+    if (roleFromUrl) {
+        SESSION_ID = roleFromUrl;
     } else {
-        // 3. 否则兼容你原有的多存档和 URL 参数逻辑
-        const urlParams = new URLSearchParams(window.location.search);
-        let roleFromUrl = urlParams.get('role');
-        
-        if (roleFromUrl) {
-            SESSION_ID = roleFromUrl;
+        // 没有参数时，使用默认逻辑（兼容你原来的多存档功能）
+        if (sessionList.length > 0) {
+            const lastId = await localforage.getItem(`${APP_PREFIX}lastSessionId`);
+            SESSION_ID = lastId && sessionList.some(s => s.id === lastId) ? lastId : sessionList[0].id;
         } else {
-            // 原有逻辑
-            const pathHash = window.location.hash.substring(1);
-            if (pathHash && sessionList.some(s => s.id === pathHash)) {
-                SESSION_ID = pathHash;
-            } else if (sessionList.length > 0) {
-                const lastId = await localforage.getItem(`${APP_PREFIX}lastSessionId`);
-                SESSION_ID = lastId && sessionList.some(s => s.id === lastId) ? lastId : sessionList[0].id;
-            } else {
-                SESSION_ID = await createNewSession(false);
-            }
+            SESSION_ID = await createNewSession(false);
         }
     }
 
-    // 保存当前角色 ID 到全局和 localStorage
+    // 保存当前角色 ID 到全局和 localStorage，方便后续读取
     window.currentContactId = SESSION_ID; 
     await localforage.setItem(`${APP_PREFIX}lastSessionId`, SESSION_ID);
 }
