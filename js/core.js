@@ -2263,23 +2263,62 @@ window.initializeSession = async function() {
     if (savedRole) {
         SESSION_ID = savedRole;
     } else {
-        // 没有记录时，使用默认逻辑
         if (sessionList.length > 0) {
             const lastId = await localforage.getItem(`${APP_PREFIX}lastSessionId`);
             SESSION_ID = lastId && sessionList.some(s => s.id === lastId) ? lastId : sessionList[0].id;
         } else {
             SESSION_ID = await createNewSession(false);
         }
-        // 首次初始化，默认存为 role_A
         localStorage.setItem('active_contact_role', 'role_A');
     }
 
     window.currentContactId = SESSION_ID; 
     await localforage.setItem(`${APP_PREFIX}lastSessionId`, SESSION_ID);
 
-    // 清理 URL 里多余的 ?role= 参数（防止手机上的历史链接干扰）
     if (window.location.search.includes('role=')) {
         const cleanUrl = window.location.pathname + window.location.hash;
         window.history.replaceState({}, document.title, cleanUrl);
     }
 }
+
+// ============================================================
+// 【新增】切换到指定角色的统一入口函数
+// 由 contact-switcher.js 调用，彻底解决切换串台问题
+// ============================================================
+window.switchActiveContact = async function(nextRole, nextName) {
+    // 1. 保存当前角色的数据（此时 SESSION_ID 还是旧的）
+    if (typeof saveData === 'function') {
+        try { await saveData(); } catch (e) { console.warn('[switchActiveContact] 保存旧角色失败:', e); }
+    }
+
+    // 2. 切换内存中的 SESSION_ID 和 localStorage
+    SESSION_ID = nextRole;
+    window.currentContactId = nextRole;
+    localStorage.setItem('active_contact_role', nextRole);
+    await localforage.setItem(`${APP_PREFIX}lastSessionId`, nextRole);
+
+    // 3. 清空界面上旧角色的消息（防止旧消息在新角色下闪现）
+    if (typeof DOMElements !== 'undefined' && DOMElements.chatContainer) {
+        DOMElements.chatContainer.innerHTML = '';
+    }
+    messages = [];
+    window.messages = [];
+
+    // 4. 重新加载新角色的数据（核心：loadData 重新用新的 SESSION_ID 生成存储 Key）
+    if (typeof loadData === 'function') {
+        await loadData();
+    }
+
+    // 5. 更新界面名字
+    const nameEl = document.getElementById('partner-name');
+    if (nameEl && window.settings) {
+        if (!window.settings.partnerName || window.settings.partnerName === '梦角') {
+            nameEl.textContent = nextName;
+            window.settings.partnerName = nextName;
+        }
+    }
+
+    if (typeof showNotification === 'function') {
+        showNotification(`已切换至 ${nextName} ✦`, 'success', 1500);
+    }
+};
