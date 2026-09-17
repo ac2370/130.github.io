@@ -289,8 +289,6 @@ const loadData = async () => {
         }
 
         settings = getDefaultSettings();
-        // ... 下面的代码保持不变 ...
-        settings = getDefaultSettings();
 
         
         const results = await Promise.allSettled([
@@ -2298,23 +2296,40 @@ window.initializeSession = async function() {
     const sessionsData = await localforage.getItem(`${APP_PREFIX}sessionList`);
     sessionList = sessionsData || [];
 
-    // 从 URL 参数获取当前要用的角色ID（用 ?role=xxx 区分）
+    // 1. 优先从我们切换器存的地方读取角色
+    const activeRole = localStorage.getItem('active_contact_role');
+
+    // 2. 如果没有，再尝试从 URL 参数获取（兼容旧链接）
     const urlParams = new URLSearchParams(window.location.search);
     let roleFromUrl = urlParams.get('role');
 
-    if (roleFromUrl) {
+    if (activeRole) {
+        // 如果有本地记录，说明是主动切换过，直接用它
+        SESSION_ID = activeRole;
+        // 顺便清理一下 URL 里的参数，防止出现奇怪的页面状态
+        if (window.history.replaceState && window.location.search) {
+            const cleanUrl = window.location.pathname + window.location.hash;
+            window.history.replaceState({}, document.title, cleanUrl);
+        }
+    } else if (roleFromUrl) {
+        // 如果没本地记录，但 URL 有参数，用 URL 的（兼容旧链接）
         SESSION_ID = roleFromUrl;
+        localStorage.setItem('active_contact_role', roleFromUrl); // 存起来
     } else {
-        // 没有参数时，使用默认逻辑（兼容你原来的多存档功能）
+        // 都没有，才使用默认逻辑
         if (sessionList.length > 0) {
             const lastId = await localforage.getItem(`${APP_PREFIX}lastSessionId`);
             SESSION_ID = lastId && sessionList.some(s => s.id === lastId) ? lastId : sessionList[0].id;
         } else {
             SESSION_ID = await createNewSession(false);
         }
+        // 默认存为 role_A
+        if (SESSION_ID === 'role_A' || !SESSION_ID) {
+             localStorage.setItem('active_contact_role', 'role_A');
+        }
     }
 
-    // 保存当前角色 ID 到全局和 localStorage，方便后续读取
+    // 保存当前角色 ID 到全局
     window.currentContactId = SESSION_ID; 
     await localforage.setItem(`${APP_PREFIX}lastSessionId`, SESSION_ID);
 }
