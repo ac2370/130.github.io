@@ -1,5 +1,6 @@
 /* js/contact-switcher.js 角色切换器（兼容哈希路由版） */
 (function() {
+    // ... 中间的代码不变 ...
     // 获取当前角色，从 URL 的 hash 中找，例如 #role_B
     // 如果你是在 #/ 这种路由后面，我们单独加个参数
     function getCurrentRole() {
