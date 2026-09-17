@@ -2296,58 +2296,30 @@ window.initializeSession = async function() {
     const sessionsData = await localforage.getItem(`${APP_PREFIX}sessionList`);
     sessionList = sessionsData || [];
 
-    // 1. 优先从我们切换器存的地方读取角色
-    const activeRole = localStorage.getItem('active_contact_role');
+    // 【核心修改】彻底忽略 URL 参数，只从 localStorage 读取当前角色
+    let savedRole = localStorage.getItem('active_contact_role');
 
-    // 2. 如果没有，再尝试从 URL 参数获取（兼容旧链接）
-    const urlParams = new URLSearchParams(window.location.search);
-    let roleFromUrl = urlParams.get('role');
-
-    if (activeRole) {
-        // 如果有本地记录，说明是主动切换过，直接用它
-        SESSION_ID = activeRole;
-        // 顺便清理一下 URL 里的参数，防止出现奇怪的页面状态
-        if (window.history.replaceState && window.location.search) {
-            const cleanUrl = window.location.pathname + window.location.hash;
-            window.history.replaceState({}, document.title, cleanUrl);
-        }
-    } else if (roleFromUrl) {
-        // 如果没本地记录，但 URL 有参数，用 URL 的（兼容旧链接）
-        SESSION_ID = roleFromUrl;
-        localStorage.setItem('active_contact_role', roleFromUrl); // 存起来
+    if (savedRole) {
+        SESSION_ID = savedRole;
     } else {
-        // 都没有，才使用默认逻辑
+        // 如果没有记录，才使用默认逻辑
         if (sessionList.length > 0) {
             const lastId = await localforage.getItem(`${APP_PREFIX}lastSessionId`);
             SESSION_ID = lastId && sessionList.some(s => s.id === lastId) ? lastId : sessionList[0].id;
         } else {
             SESSION_ID = await createNewSession(false);
         }
-        // 默认存为 role_A
-        if (SESSION_ID === 'role_A' || !SESSION_ID) {
-             localStorage.setItem('active_contact_role', 'role_A');
-        }
+        // 首次初始化，默认存为 role_A
+        localStorage.setItem('active_contact_role', 'role_A');
     }
 
     // 保存当前角色 ID 到全局
     window.currentContactId = SESSION_ID; 
     await localforage.setItem(`${APP_PREFIX}lastSessionId`, SESSION_ID);
-}
 
-document.addEventListener('DOMContentLoaded', function() {
-    const chatArea = document.querySelector('.main-chat-area');
-    const historyLoader = document.getElementById('history-loader');
-    
-    if (chatArea && historyLoader && typeof IntersectionObserver !== 'undefined') {
-        const observer = new IntersectionObserver((entries) => {
-            if (entries[0].isIntersecting && messages.length > displayedMessageCount) {
-                loadMoreHistory();
-            }
-        }, {
-            root: chatArea,
-            rootMargin: '200px 0px 0px 0px',
-            threshold: 0.01
-        });
-        observer.observe(historyLoader);
+    // 清理 URL 里多余的 ?role= 参数（防止你手机上的历史链接干扰）
+    if (window.location.search.includes('role=')) {
+        const cleanUrl = window.location.pathname + window.location.hash;
+        window.history.replaceState({}, document.title, cleanUrl);
     }
-});
+}
