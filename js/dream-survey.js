@@ -1,8 +1,9 @@
-// dream-survey.js - 完整梦向问卷系统（每日随机弹出2~4次版）
+// dream-survey.js - 完整梦向问卷系统（每日随机弹出2~4次版 · 多角色隔离版）
 // 修改说明：
 // 1. 所有通过 addMessage 发送的消息都添加 quotable: false，禁止引用
 // 2. 每日问卷在24小时内随机弹出 2~4 次（不再使用40%概率单次判断）
 // 3. 默认字卡库使用 "动态.docx" 中的内容（共 400+ 条）
+// 4. 所有存储键均通过 getStorageKey() 生成，与角色 SESSION_ID 绑定，实现多角色隔离
 (function() {
     'use strict';
 
@@ -34,34 +35,34 @@
     ];
 
     // =============================================
-    // 2. 工具函数
+    // 2. 工具函数（全部走 getStorageKey 实现角色隔离）
     // =============================================
     function _getCustomList() {
-        try { return JSON.parse(localStorage.getItem(CUSTOM_KEY)) || []; } catch { return []; }
+        try { return JSON.parse(localStorage.getItem(getStorageKey(CUSTOM_KEY))) || []; } catch { return []; }
     }
     function _setCustomList(list) {
-        localStorage.setItem(CUSTOM_KEY, JSON.stringify(list));
+        localStorage.setItem(getStorageKey(CUSTOM_KEY), JSON.stringify(list));
     }
     function _getDailyRecord() {
-        try { return JSON.parse(localStorage.getItem(DAILY_KEY)) || {}; } catch { return {}; }
+        try { return JSON.parse(localStorage.getItem(getStorageKey(DAILY_KEY))) || {}; } catch { return {}; }
     }
     function _setDailyRecord(rec) {
-        localStorage.setItem(DAILY_KEY, JSON.stringify(rec));
+        localStorage.setItem(getStorageKey(DAILY_KEY), JSON.stringify(rec));
     }
     function _getQuestionnaires() {
-        try { return JSON.parse(localStorage.getItem(QUESTIONNAIRES_KEY)) || []; } catch { return []; }
+        try { return JSON.parse(localStorage.getItem(getStorageKey(QUESTIONNAIRES_KEY))) || []; } catch { return []; }
     }
     function _setQuestionnaires(list) {
-        localStorage.setItem(QUESTIONNAIRES_KEY, JSON.stringify(list));
+        localStorage.setItem(getStorageKey(QUESTIONNAIRES_KEY), JSON.stringify(list));
     }
     function _getHistory() {
-        try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; } catch { return []; }
+        try { return JSON.parse(localStorage.getItem(getStorageKey(HISTORY_KEY))) || []; } catch { return []; }
     }
     function _addHistory(entry) {
         const h = _getHistory();
         h.push(entry);
         if (h.length > 100) h.shift();
-        localStorage.setItem(HISTORY_KEY, JSON.stringify(h));
+        localStorage.setItem(getStorageKey(HISTORY_KEY), JSON.stringify(h));
     }
 
     function _getAllQuestions() {
@@ -267,7 +268,8 @@
             cards = window.customReplies.map(c => typeof c === 'string' ? c : (c.text || c.label || ''));
         }
         try {
-            const stored = localStorage.getItem('customReplies');
+            // 关键：走 getStorageKey('customReplies')，与角色绑定
+            const stored = localStorage.getItem(getStorageKey('customReplies'));
             if (stored) {
                 const parsed = JSON.parse(stored);
                 if (Array.isArray(parsed)) {
@@ -335,7 +337,6 @@
         const today = new Date().toDateString();
         const record = _getDailyRecord();
         
-        // 如果今天已经弹出过，且次数已达上限，则跳过
         if (record.lastDate === today && record.popupCount >= record.maxPopups) {
             console.log('[梦向问卷] 今日弹出次数已达上限（' + record.maxPopups + '次），跳过');
             return;
@@ -349,11 +350,10 @@
         
         const question = _randomPick(allQ);
         
-        // 更新记录
         if (record.lastDate !== today) {
             record.lastDate = today;
             record.popupCount = 0;
-            record.maxPopups = 2 + Math.floor(Math.random() * 3); // 2~4次
+            record.maxPopups = 2 + Math.floor(Math.random() * 3);
             console.log('[梦向问卷] 新的一天，今日将随机弹出 ' + record.maxPopups + ' 次');
         }
         record.popupCount = (record.popupCount || 0) + 1;
@@ -1016,18 +1016,15 @@
         var record = _getDailyRecord();
         var today = new Date().toDateString();
         
-        // 如果今天还没有生成过弹出计划，则生成 2~4 个随机时间点
         if (record.lastDate !== today || !record.popupTimes || record.popupTimes.length === 0) {
-            var count = 2 + Math.floor(Math.random() * 3); // 2~4次
+            var count = 2 + Math.floor(Math.random() * 3);
             var times = [];
             for (var i = 0; i < count; i++) {
-                // 在 0:00 ~ 23:59 之间随机一个时间点
                 var hour = Math.floor(Math.random() * 24);
                 var minute = Math.floor(Math.random() * 60);
                 var second = Math.floor(Math.random() * 60);
                 times.push({ hour: hour, minute: minute, second: second });
             }
-            // 按时间排序
             times.sort(function(a, b) {
                 return (a.hour * 3600 + a.minute * 60 + a.second) - (b.hour * 3600 + b.minute * 60 + b.second);
             });
@@ -1046,39 +1043,34 @@
             console.log('[梦向问卷] 今日已有弹出计划，剩余 ' + (record.maxPopups - record.popupCount) + ' 次');
         }
         
-        // 启动定时器，每分钟检查一次是否到达弹出时间
         setInterval(function() {
             var now = new Date();
             var rec = _getDailyRecord();
             var todayStr = now.toDateString();
             
-            // 如果跨天了，重新生成计划
             if (rec.lastDate !== todayStr) {
                 console.log('[梦向问卷] 跨天，重新生成弹出计划');
                 _init();
                 return;
             }
             
-            // 如果已经达到最大弹出次数，跳过
             if (rec.popupCount >= rec.maxPopups) {
                 return;
             }
             
             var currentSeconds = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
             
-            // 检查是否有到点的弹出时间
             if (rec.popupTimes && rec.popupTimes.length > 0) {
-                var nextTime = rec.popupTimes[rec.popupCount]; // 下一个待弹出的时间点
+                var nextTime = rec.popupTimes[rec.popupCount];
                 if (nextTime) {
                     var targetSeconds = nextTime.hour * 3600 + nextTime.minute * 60 + nextTime.second;
-                    // 如果当前时间已经过了目标时间（允许30秒误差）
                     if (currentSeconds >= targetSeconds && currentSeconds - targetSeconds < 60) {
                         console.log('[梦向问卷] 到达弹出时间点！');
                         _checkDailyPopup();
                     }
                 }
             }
-        }, 60000); // 每分钟检查一次
+        }, 60000);
     }
 
     if (document.readyState === 'loading') {
