@@ -435,6 +435,9 @@ const loadData = async () => {
     }
 };
 
+// 【关键修复】显式挂载到 window，供 contact-switcher.js 调用
+window.loadData = loadData;
+
 const LIBRARY_CONFIG = {
     reply: {
         title: "回复库管理",
@@ -619,6 +622,9 @@ const saveData = async () => {
 
     _backupCriticalData();
 };
+
+// 【关键修复】显式挂载到 window，供 contact-switcher.js 调用
+window.saveData = saveData;
 
         function initializeRandomUI() {
             document.querySelector('.header-motto').textContent = getRandomItem(CONSTANTS.HEADER_MOTTOS);
@@ -2287,8 +2293,9 @@ window.initializeSession = async function() {
 // ============================================================
 window.switchActiveContact = async function(nextRole, nextName) {
     // 1. 保存当前角色的数据（此时 SESSION_ID 还是旧的）
-    if (typeof saveData === 'function') {
-        try { await saveData(); } catch (e) { console.warn('[switchActiveContact] 保存旧角色失败:', e); }
+    // 使用 window.saveData() 显式调用，避免作用域问题
+    if (typeof window.saveData === 'function') {
+        try { await window.saveData(); } catch (e) { console.warn('[switchActiveContact] 保存旧角色失败:', e); }
     }
 
     // 2. 切换内存中的 SESSION_ID 和 localStorage
@@ -2304,9 +2311,9 @@ window.switchActiveContact = async function(nextRole, nextName) {
     messages = [];
     window.messages = [];
 
-    // 4. 重新加载新角色的数据（核心：loadData 重新用新的 SESSION_ID 生成存储 Key）
-    if (typeof loadData === 'function') {
-        await loadData();
+    // 4. 重新加载新角色的数据（使用 window.loadData 显式调用，确保一定执行）
+    if (typeof window.loadData === 'function') {
+        await window.loadData();
     }
 
     // 5. 更新界面名字
