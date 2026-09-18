@@ -1,11 +1,19 @@
+/* js/features/envelope.js - 信封投递（已隔离版） */
 let envelopeData = { outbox: [], inbox: [] }; 
 let currentEnvTab = 'outbox';
 let editingEnvId = null; 
 let editingEnvSection = null; 
 
 async function loadEnvelopeData() {
+    // 【关键】切换角色时先清空内存，防止旧数据残留
+    envelopeData = { outbox: [], inbox: [] };
+
     const saved = await localforage.getItem(getStorageKey('envelopeData'));
     if (saved) envelopeData = saved;
+
+    // 【关键】同步到 window，供切换后统一调度
+    window.envelopeData = envelopeData;
+
     const oldPending = await localforage.getItem(getStorageKey('pending_envelope'));
     if (oldPending && envelopeData.outbox.length === 0) {
         envelopeData.outbox.push({
@@ -21,6 +29,8 @@ async function loadEnvelopeData() {
 }
 
 function saveEnvelopeData() {
+    // 【关键】同步到 window
+    window.envelopeData = envelopeData;
     localforage.setItem(getStorageKey('envelopeData'), envelopeData);
 }
 
@@ -418,4 +428,3 @@ function handleSendEnvelope() {
     switchEnvTab('outbox');
     showNotification(`信件已寄出，预计 ${Math.floor(randomHours)} 小时后收到回信 ✉️`, 'success');
 }
-
