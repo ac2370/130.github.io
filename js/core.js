@@ -2783,16 +2783,13 @@ const addMessage = (message, opts) => {
             writePromise.then(() => {
 
                 // 通知用户
-                if (typeof showNotification === 'function') {
-
-                    const nameMap = { 'role_A': '梦角A', 'role_B': '梦角B' };
-
-                    const displayName = nameMap[message.contactId] || message.contactId;
-
-                    const preview = (message.text || '').slice(0, 20) || '[图片]';
-
-                    showNotification(`💬 ${displayName} 回复了你：${preview}`, 'info', 4000);
-
+         if (typeof showNotification === 'function') {
+            
+               const nameMap = { 'role_A': '梦角A', 'role_B': '梦角B' };
+                    
+               const displayName = nameMap[message.contactId] || message.contactId;
+                    
+               showNotification(`💬 ${displayName} 回复了你`, 'info', 4000);
                 }
 
                 // 播放提示音
