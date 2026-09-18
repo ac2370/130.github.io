@@ -1,9 +1,9 @@
 /* 核心应用逻辑：数据加载保存、消息渲染、会话管理等
-   —— 多角色隔离 + 异步回复角色锁 + 防串框 + 防闪屏 + 多监听通道 融合版
-   —— v2：修复切换角色后异步回复串框/丢失问题 */
+   —— 多角色隔离 + 异步回复角色锁 + 防串框 + 防闪屏 + 多监听通道
+   —— v3：彻底修复跨角色串框问题 */
 
 // ============================================================
-// 【多监听通道】梦角回复消息
+// 【多监听通道】
 // ============================================================
 window._partnerMessageListeners = window._partnerMessageListeners || [];
 window._registerPartnerMessageListener = window._registerPartnerMessageListener || function (fn) {
@@ -20,12 +20,10 @@ let newMsgCountWhileBrowsing = 0;
 
 // ============================================================
 // 【角色锁】按角色隔离的异步回复任务池
-// 每个角色独立维护自己的 pending timers / tasks
 // ============================================================
 window._pendingReplyTasks = window._pendingReplyTasks || {};
-window._pendingReplyTimers = window._pendingReplyTimers || {}; // roleId -> timerId
+window._pendingReplyTimers = window._pendingReplyTimers || {};
 
-// 清理指定角色的所有等待任务（一般只在极端情况下调用）
 window._cancelReplyTasksFor = function (roleId) {
     if (window._pendingReplyTimers[roleId]) {
         clearTimeout(window._pendingReplyTimers[roleId]);
@@ -37,18 +35,32 @@ window._cancelReplyTasksFor = function (roleId) {
     }
 };
 
-// 注册一个属于某角色的 timeout
 function _registerRoleTimer(roleId, timerId) {
     if (!window._pendingReplyTasks[roleId]) window._pendingReplyTasks[roleId] = [];
     window._pendingReplyTasks[roleId].push(timerId);
 }
 
-// 清除某角色已完成的 timer
 function _unregisterRoleTimer(roleId, timerId) {
     var arr = window._pendingReplyTasks[roleId];
     if (!arr) return;
     var idx = arr.indexOf(timerId);
     if (idx > -1) arr.splice(idx, 1);
+}
+
+// ============================================================
+// 统一的存储键生成（唯一真理）
+// ============================================================
+function _msgStorageKeyFor(contactId) {
+    return `${APP_PREFIX}${contactId}_chatMessages`;
+}
+
+// ============================================================
+// 【审计】消息写入日志（方便排查串框）
+// ============================================================
+function _auditMsgWrite(msg, where) {
+    try {
+        console.log(`[MSG-WRITE/${where}] contactId=${msg.contactId} | SESSION_ID=${window.SESSION_ID} | sender=${msg.sender} | text=${(msg.text||'').slice(0,20)}`);
+    } catch(e) {}
 }
 
 // ============================================================
@@ -128,7 +140,7 @@ function clearAllAppData() {
 }
 
 // ============================================================
-// 增量加载更早的消息
+// 增量加载更早 / 更晚的消息
 // ============================================================
 function _prependOlderMessages(startIdx, endIdxExclusive) {
     const container = DOMElements.chatContainer;
@@ -163,9 +175,6 @@ function _prependOlderMessages(startIdx, endIdxExclusive) {
     container.style.scrollBehavior = prevScrollBehavior || '';
 }
 
-// ============================================================
-// 增量加载更晚的消息
-// ============================================================
 function _appendNewerMessages(startIdx, endIdxExclusive) {
     const container = DOMElements.chatContainer;
     const batch = messages.slice(startIdx, endIdxExclusive);
@@ -189,9 +198,6 @@ function _appendNewerMessages(startIdx, endIdxExclusive) {
     container.appendChild(fragment);
 }
 
-// ============================================================
-// loadMoreHistory
-// ============================================================
 function loadMoreHistory() {
     const historyLoader = document.getElementById('history-loader');
     const container = DOMElements && DOMElements.chatContainer;
@@ -229,9 +235,6 @@ function loadMoreHistory() {
     }, 120);
 }
 
-// ============================================================
-// loadMoreFuture
-// ============================================================
 function loadMoreFuture() {
     const futureLoader = document.getElementById('future-loader');
     const container = DOMElements && DOMElements.chatContainer;
@@ -410,11 +413,9 @@ function renderBackgroundGallery() {
     });
 }
 
-
 function saveBackgroundGallery() {
     localforage.setItem(getStorageKey('backgroundGallery'), savedBackgrounds);
 }
-
 
 const applyBackground = async (value) => {
     if (!value || typeof value !== 'string') return;
@@ -457,7 +458,7 @@ const applyBackground = async (value) => {
 
 
 // ============================================================
-// loadData —— 多角色隔离 + 防串框
+// loadData
 // ============================================================
 const loadData = async () => {
     try {
@@ -564,9 +565,10 @@ const loadData = async () => {
         customPeriodCare = savedPeriodCare || [];
 
         if (savedMessages && Array.isArray(savedMessages)) {
+            // 【关键】严格过滤，只保留 contactId 等于当前 SESSION_ID 或未标记的（旧数据兼容）
             messages = savedMessages
                 .filter(m => !m.contactId || m.contactId === SESSION_ID)
-                .map(m => ({ ...m, timestamp: new Date(m.timestamp) }));
+                .map(m => ({ ...m, timestamp: new Date(m.timestamp), contactId: SESSION_ID }));
         } else {
             const backup = _tryRecoverFromBackup();
             if (backup && Array.isArray(backup.messages) && backup.messages.length > 0) {
@@ -574,7 +576,7 @@ const loadData = async () => {
                 console.warn(`[loadData] 主存储无消息，正在从备份恢复（备份时间：${timeSince} 分钟前）`);
                 messages = backup.messages
                     .filter(m => !m.contactId || m.contactId === SESSION_ID)
-                    .map(m => ({ ...m, timestamp: new Date(m.timestamp) }));
+                    .map(m => ({ ...m, timestamp: new Date(m.timestamp), contactId: SESSION_ID }));
                 if (backup.settings) Object.assign(settings, backup.settings);
                 if (backup.anniversaries && Array.isArray(backup.anniversaries)) {
                     anniversaries = backup.anniversaries;
@@ -698,7 +700,6 @@ const LIBRARY_CONFIG = {
     }
 };
 let currentAnnType = 'anniversary';
-
 
 window.openMyStickerSettings = function() {
     const picker = document.getElementById('user-sticker-picker');
@@ -1551,28 +1552,34 @@ function _isCaughtUpToLatest() {
 
 
 // ============================================================
-// 【核心修复】addMessage —— 非当前联系人消息写入对应角色独立存储
-// 不再依赖 opts.silent 决定是否写入，只决定是否提示/播声音
+// 【核心修复 v3】addMessage
+//   - 如果 message.contactId 未定义：用 window.SESSION_ID（用户自己发的消息）
+//   - 如果 message.contactId 已定义：严格按它来路由
+//   - 非当前 contactId 一律写入对应独立存储池，绝对不渲染
 // ============================================================
 const addMessage = (message, opts) => {
     opts = opts || {};
     if (!(message.timestamp instanceof Date)) message.timestamp = new Date(message.timestamp);
 
+    // 【关键】只有未显式指定 contactId 时才 fallback（用户手动发消息场景）
     if (!message.contactId) {
         message.contactId = window.SESSION_ID;
     }
 
     const isCurrentContact = (message.contactId === window.SESSION_ID);
 
-    // ========== 非当前联系人：写入对应角色的独立存储池 ==========
+    _auditMsgWrite(message, isCurrentContact ? 'CURRENT' : 'BACKGROUND');
+
+    // ========== 非当前联系人：只写入对应角色的独立存储，绝不渲染 ==========
     if (!isCurrentContact) {
         (async function () {
             try {
-                const key = `${APP_PREFIX}${message.contactId}_chatMessages`;
+                // 【关键】使用统一的 _msgStorageKeyFor 生成，确保与 loadData 读取键一致
+                const key = _msgStorageKeyFor(message.contactId);
                 const existing = await localforage.getItem(key) || [];
                 existing.push(message);
                 await localforage.setItem(key, existing);
-                console.log('[addMessage] 后台写入到', message.contactId, '消息数:', existing.length);
+                console.log('[addMessage] ✅ 已写入后台存储', key, '消息数:', existing.length);
 
                 // 只有非静默模式才弹通知/播声音
                 if (opts.silent !== true) {
@@ -1589,7 +1596,7 @@ const addMessage = (message, opts) => {
                     if (typeof playSound === 'function') playSound('message');
                 }
             } catch (e) {
-                console.warn('[addMessage] 后台写入失败:', e);
+                console.warn('[addMessage] ❌ 后台写入失败:', e);
             }
         })();
         return;
@@ -1722,6 +1729,7 @@ window._addCallEvent = (icon, label, detail) => {
         callDetail: detail || null,
         favorited: false,
         note: null,
+        contactId: window.SESSION_ID
     });
 };
 
@@ -1826,7 +1834,7 @@ window._triggerPartnerPoke = function() {
         ? window._formatPartnerPokeText(`${settings.partnerName} ${pokeAction}`)
         : `${settings.partnerName} ${pokeAction}`;
 
-    addMessage({ id: Date.now(), text: pokeText, timestamp: new Date(), type: 'system' });
+    addMessage({ id: Date.now(), text: pokeText, timestamp: new Date(), type: 'system', contactId: window.SESSION_ID });
     if (typeof playSound === 'function') playSound('partner_poke');
     (function(){try{if(window._typingIndicatorAutoHideTimer){clearTimeout(window._typingIndicatorAutoHideTimer);window._typingIndicatorAutoHideTimer=null;}}catch(e){}var _tiW=document.getElementById('typing-indicator-wrapper');if(_tiW){var _tiInner=_tiW.querySelector('.typing-indicator');if(_tiInner){_tiInner.classList.add('hiding');setTimeout(function(){_tiW.style.display='none';if(_tiInner)_tiInner.classList.remove('hiding');},240);}else{_tiW.style.display='none';}}})();
 };
@@ -1977,14 +1985,14 @@ function sendBatchMessages() {
     batchMessages.forEach((msg, index) => {
         setTimeout(() => {
             addMessage({
-                id: Date.now() + index, sender: 'user', text: msg.text || '', image: msg.image || null, timestamp: new Date(), status: 'sent', favorited: false, type: 'normal'
+                id: Date.now() + index, sender: 'user', text: msg.text || '', image: msg.image || null, timestamp: new Date(), status: 'sent', favorited: false, type: 'normal', contactId: window.SESSION_ID
             });
             playSound('send');
         }, index * 300);
     });
     const delayRange = settings.replyDelayMax - settings.replyDelayMin;
     const randomDelay = settings.replyDelayMin + Math.random() * delayRange;
-    setTimeout(simulateReply, batchMessages.length * 300 + randomDelay);
+    setTimeout(() => simulateReply(), batchMessages.length * 300 + randomDelay);
     isBatchMode = false; batchMessages = [];
     DOMElements.batchBtn.classList.remove('active'); DOMElements.batchPreview.style.display = 'none';
     const placeholder = "";
@@ -2017,7 +2025,7 @@ function positionTypingIndicator() {
 
 
 // ============================================================
-// 【核心修复】_triggerDelayedReply —— 按角色隔离定时器
+// 【核心修复 v3】_triggerDelayedReply —— 按角色隔离定时器
 // ============================================================
 window._triggerDelayedReply = function(isUserMessage) {
     if (isBatchMode) return false;
@@ -2025,7 +2033,7 @@ window._triggerDelayedReply = function(isUserMessage) {
         window._companionSilentTrigger = false;
     }
 
-    // 锁定发起时的角色 ID 和设置快照
+    // 【关键】锁定发起时的角色 ID 和设置快照
     const originContactId = window.SESSION_ID;
     const originSettings = Object.assign({}, settings);
 
@@ -2044,7 +2052,7 @@ window._triggerDelayedReply = function(isUserMessage) {
     if (isUserMessage) {
         const readDelay = 1500 + Math.random() * 2500;
         const readTimer = setTimeout(() => {
-            if (window.SESSION_ID !== originContactId) return; // 角色已切走，跳过
+            if (window.SESSION_ID !== originContactId) return; // 角色已切走，跳过 UI 更新
             let changed = false;
             messages.forEach(msg => {
                 if (msg.sender === 'user' && msg.status !== 'read') {
@@ -2060,9 +2068,8 @@ window._triggerDelayedReply = function(isUserMessage) {
 
     if (shouldIgnore) return false;
 
-    // 记录 typing indicator 状态到角色（在回调里根据当前 SESSION_ID 决定是否显示）
+    // typing indicator 只在当前角色显示
     if (originSettings.typingIndicatorEnabled) {
-        // 只在当前就在这个角色时才立刻显示
         if (originContactId === window.SESSION_ID) {
             const tiWrapper = document.getElementById('typing-indicator-wrapper');
             const tiLabel = document.getElementById('typing-indicator-label');
@@ -2083,7 +2090,7 @@ window._triggerDelayedReply = function(isUserMessage) {
     const replyTimer = setTimeout(() => {
         delete window._pendingReplyTimers[originContactId];
         _unregisterRoleTimer(originContactId, replyTimer);
-        // 传 originContactId 和 originSettings 快照给 simulateReply
+        // 【关键】传 originContactId 和 originSettings 快照给 simulateReply
         window.simulateReply(originContactId, originSettings);
         setTimeout(() => {
             if (window.SESSION_ID === originContactId) {
@@ -2099,13 +2106,13 @@ window._triggerDelayedReply = function(isUserMessage) {
 
 
 // ============================================================
-// 【核心修复】simulateReply —— 使用发起时的设置快照，全流程角色隔离
+// 【核心修复 v3】simulateReply —— 使用发起时的设置快照，全流程角色隔离
+// 所有 addMessage 调用强制传 contactId: originContactId
 // ============================================================
 window.simulateReply = function(originContactId, originSettings) {
     if (!originContactId) originContactId = window.SESSION_ID;
     if (!originSettings) originSettings = Object.assign({}, settings);
 
-    // 每次执行时重新判断"当前是否仍是发起角色"
     function isStillSameContact() {
         return originContactId === window.SESSION_ID;
     }
@@ -2130,7 +2137,7 @@ window.simulateReply = function(originContactId, originSettings) {
         }
     }
 
-    // 只在当前角色下更新已读状态
+    // 已读回执：只在当前角色下操作内存
     if (isStillSameContact()) {
         let changed = false;
         messages.forEach(msg => {
@@ -2143,7 +2150,7 @@ window.simulateReply = function(originContactId, originSettings) {
         }
     }
 
-    // 人设切换只影响当前角色
+    // 人设切换只在当前角色执行
     if (isStillSameContact() && partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
         const currentPool = [...partnerPersonas];
         if(currentPool.length > 0) {
@@ -2165,13 +2172,13 @@ window.simulateReply = function(originContactId, originSettings) {
 
     const replyCount = Math.random() < 0.75 ? 1: (Math.random() < 0.95 ? 2: 3);
 
-    // 回复库：如果角色已切走，异步从发起角色的独立存储读取
-    let poolCustomReplies = (isStillSameContact()) ? customReplies : [];
-    let poolCustomEmojis = (isStillSameContact()) ? customEmojis : [];
-    let poolStickerLibrary = (isStillSameContact()) ? stickerLibrary : [];
-    let poolCustomReplyGroups = (isStillSameContact()) ? (window.customReplyGroups || []) : [];
+    // 【关键】回复库：优先用当前内存（同角色时），否则从发起角色的独立存储异步读取
+    let poolCustomReplies = isStillSameContact() ? customReplies : null;
+    let poolCustomEmojis = isStillSameContact() ? customEmojis : null;
+    let poolStickerLibrary = isStillSameContact() ? stickerLibrary : null;
+    let poolCustomReplyGroups = isStillSameContact() ? (window.customReplyGroups || []) : null;
 
-    // 【关键修复】不论当前是否是同一角色，都尝试从该角色存储池拉取其回复库
+    // 如果不同角色，或需要读发起角色的库，异步拉取
     (async function () {
         try {
             const prefix = `${APP_PREFIX}${originContactId}_`;
@@ -2182,9 +2189,13 @@ window.simulateReply = function(originContactId, originSettings) {
                 localforage.getItem(prefix + 'customReplyGroups')
             ]);
             if (Array.isArray(cr) && cr.length) poolCustomReplies = cr;
+            else if (!poolCustomReplies) poolCustomReplies = [];
             if (Array.isArray(ce) && ce.length) poolCustomEmojis = ce;
+            else if (!poolCustomEmojis) poolCustomEmojis = [];
             if (Array.isArray(sl) && sl.length) poolStickerLibrary = sl;
+            else if (!poolStickerLibrary) poolStickerLibrary = [];
             if (Array.isArray(crg) && crg.length) poolCustomReplyGroups = crg;
+            else if (!poolCustomReplyGroups) poolCustomReplyGroups = [];
         } catch (e) {}
     })();
 
@@ -2200,7 +2211,7 @@ window.simulateReply = function(originContactId, originSettings) {
         } catch (e) { return new Set(); }
     })();
     const disabledGroupItemsOnce = new Set();
-    poolCustomReplyGroups.forEach(g => {
+    (poolCustomReplyGroups || []).forEach(g => {
         if (g.disabled && Array.isArray(g.items)) g.items.forEach(item => disabledGroupItemsOnce.add(item));
     });
     const replyPoolOnce = poolCustomReplies
@@ -2228,7 +2239,6 @@ window.simulateReply = function(originContactId, originSettings) {
         const stepTimer = setTimeout(() => {
             _unregisterRoleTimer(originContactId, stepTimer);
             try {
-                // 每次执行时判断当前是否仍是该角色（决定 UI 行为）
                 const stillSame = (originContactId === window.SESSION_ID);
 
                 const replyPool = replyPoolOnce;
@@ -2277,7 +2287,7 @@ window.simulateReply = function(originContactId, originSettings) {
                     }
                 }
 
-                // 【关键】addMessage 内部会根据 contactId 与 SESSION_ID 决定写入/渲染
+                // 【核心】强制使用 originContactId，绝不使用 window.SESSION_ID
                 addMessage({
                     id: Date.now() + i,
                     sender: capturedPartnerName,
@@ -2384,7 +2394,7 @@ window.simulateReply = function(originContactId, originSettings) {
 
 
 // ============================================================
-// 其余所有函数完全保留
+// 其余所有函数
 // ============================================================
 function showModal(modalElement, focusElement = null) {
     if (modalElement._hideTimeout) {
@@ -2975,7 +2985,8 @@ window.initializeSession = async function() {
 
 
 // ============================================================
-// 【关键】switchActiveContact —— 保留异步任务，让两个角色并行运行
+// 【核心修复 v3】switchActiveContact
+// 保留旧角色的 pending timers，让它们继续后台执行
 // ============================================================
 window.switchActiveContact = async function(nextRole, nextName) {
     // 1. 保存当前角色数据（此时 SESSION_ID 还是旧的）
@@ -2983,8 +2994,8 @@ window.switchActiveContact = async function(nextRole, nextName) {
         try { await window.saveData(); } catch (e) { console.warn('[switchActiveContact] 保存旧角色失败:', e); }
     }
 
-    // 【重要】不清除 _pendingReplyTimers / _pendingReplyTasks！
-    // 让旧角色的异步回复任务继续在后台跑，通过 contactId 自动写入旧角色的存储池
+    // 【重要】绝对不清除 _pendingReplyTimers / _pendingReplyTasks
+    // 让旧角色的异步任务继续在后台跑，它们通过 contactId 自动写入旧角色的独立存储
 
     // 2. 切换 SESSION_ID
     SESSION_ID = nextRole;
@@ -3014,7 +3025,7 @@ window.switchActiveContact = async function(nextRole, nextName) {
     msgWinEnd = 0;
     newMsgCountWhileBrowsing = 0;
 
-    // 6. 隐藏 typing indicator（防止切换后还显示旧角色的"正在输入"）
+    // 6. 隐藏 typing indicator
     const tiWrapper = document.getElementById('typing-indicator-wrapper');
     if (tiWrapper) tiWrapper.style.display = 'none';
 
