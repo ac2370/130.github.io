@@ -1,8 +1,8 @@
 /* 核心应用逻辑：数据加载保存、消息渲染、会话管理等
-   —— 多角色隔离 + 异步回复角色锁 + 防串框 + 防闪屏 + 多监听通道 融合版 */
+   —— 多角色隔离 + 异步回复角色锁 + 防串框 + 防闪屏 + 多监听通道 */
 
 // ============================================================
-// 【新增】梦角回复消息的多监听通道
+// 梦角回复消息的多监听通道
 // ============================================================
 window._partnerMessageListeners = window._partnerMessageListeners || [];
 window._registerPartnerMessageListener = window._registerPartnerMessageListener || function (fn) {
@@ -10,7 +10,7 @@ window._registerPartnerMessageListener = window._registerPartnerMessageListener 
 };
 
 // ============================================================
-// 【新增】消息浏览模式状态（防串框）
+// 消息浏览模式状态
 // ============================================================
 let msgViewMode = 'latest';
 let msgWinStart = 0;
@@ -18,14 +18,17 @@ let msgWinEnd = 0;
 let newMsgCountWhileBrowsing = 0;
 
 // ============================================================
-// 【新增】异步回复任务的角色锁池
-// 每次触发 simulateReply 时创建 task，绑定发起时的 SESSION_ID
-// 执行时先校验 SESSION_ID 是否还是同一个
+// 角色名映射
 // ============================================================
-window._pendingReplyTasks = window._pendingReplyTasks || {};
+function _getContactDisplayName(contactId) {
+    if (contactId === 'role_A') return '梦角A';
+    if (contactId === 'role_B') return '梦角B';
+    if (contactId === 'role_C') return '梦角C';
+    return contactId;
+}
 
 // ============================================================
-// clearAllAppData —— 保留
+// clearAllAppData
 // ============================================================
 function clearAllAppData() {
     const overlay = document.createElement('div');
@@ -101,7 +104,7 @@ function clearAllAppData() {
 }
 
 // ============================================================
-// 增量加载更早的消息
+// 增量加载更早 / 更晚的消息
 // ============================================================
 function _prependOlderMessages(startIdx, endIdxExclusive) {
     const container = DOMElements.chatContainer;
@@ -136,9 +139,6 @@ function _prependOlderMessages(startIdx, endIdxExclusive) {
     container.style.scrollBehavior = prevScrollBehavior || '';
 }
 
-// ============================================================
-// 增量加载更晚的消息
-// ============================================================
 function _appendNewerMessages(startIdx, endIdxExclusive) {
     const container = DOMElements.chatContainer;
     const batch = messages.slice(startIdx, endIdxExclusive);
@@ -163,7 +163,7 @@ function _appendNewerMessages(startIdx, endIdxExclusive) {
 }
 
 // ============================================================
-// loadMoreHistory
+// loadMoreHistory / loadMoreFuture
 // ============================================================
 function loadMoreHistory() {
     const historyLoader = document.getElementById('history-loader');
@@ -202,9 +202,6 @@ function loadMoreHistory() {
     }, 120);
 }
 
-// ============================================================
-// loadMoreFuture
-// ============================================================
 function loadMoreFuture() {
     const futureLoader = document.getElementById('future-loader');
     const container = DOMElements && DOMElements.chatContainer;
@@ -239,9 +236,8 @@ function loadMoreFuture() {
     }, 120);
 }
 
-
 // ============================================================
-// getDefaultSettings —— 保留
+// getDefaultSettings
 // ============================================================
 function getDefaultSettings() {
     return {
@@ -299,9 +295,8 @@ function getDefaultSettings() {
     };
 }
 
-
 // ============================================================
-// renderBackgroundGallery —— 保留
+// renderBackgroundGallery / saveBackgroundGallery / applyBackground
 // ============================================================
 function renderBackgroundGallery() {
     const list = document.getElementById('background-gallery-list');
@@ -383,11 +378,9 @@ function renderBackgroundGallery() {
     });
 }
 
-
 function saveBackgroundGallery() {
     localforage.setItem(getStorageKey('backgroundGallery'), savedBackgrounds);
 }
-
 
 const applyBackground = async (value) => {
     if (!value || typeof value !== 'string') return;
@@ -428,9 +421,8 @@ const applyBackground = async (value) => {
     }
 };
 
-
 // ============================================================
-// loadData —— 融合多角色隔离 + 防串框
+// loadData
 // ============================================================
 const loadData = async () => {
     try {
@@ -539,7 +531,7 @@ const loadData = async () => {
         if (savedMessages && Array.isArray(savedMessages)) {
             messages = savedMessages
                 .filter(m => !m.contactId || m.contactId === SESSION_ID)
-                .map(m => ({ ...m, timestamp: new Date(m.timestamp) }));
+                .map(m => ({ ...m, timestamp: new Date(m.timestamp), contactId: m.contactId || SESSION_ID }));
         } else {
             const backup = _tryRecoverFromBackup();
             if (backup && Array.isArray(backup.messages) && backup.messages.length > 0) {
@@ -547,7 +539,7 @@ const loadData = async () => {
                 console.warn(`[loadData] 主存储无消息，正在从备份恢复（备份时间：${timeSince} 分钟前）`);
                 messages = backup.messages
                     .filter(m => !m.contactId || m.contactId === SESSION_ID)
-                    .map(m => ({ ...m, timestamp: new Date(m.timestamp) }));
+                    .map(m => ({ ...m, timestamp: new Date(m.timestamp), contactId: m.contactId || SESSION_ID }));
                 if (backup.settings) Object.assign(settings, backup.settings);
                 if (backup.anniversaries && Array.isArray(backup.anniversaries)) {
                     anniversaries = backup.anniversaries;
@@ -647,7 +639,7 @@ window.loadData = loadData;
 
 
 // ============================================================
-// LIBRARY_CONFIG —— 保留
+// LIBRARY_CONFIG
 // ============================================================
 const LIBRARY_CONFIG = {
     reply: {
@@ -671,7 +663,6 @@ const LIBRARY_CONFIG = {
     }
 };
 let currentAnnType = 'anniversary';
-
 
 window.openMyStickerSettings = function() {
     const picker = document.getElementById('user-sticker-picker');
@@ -715,7 +706,6 @@ window.deleteAnniversaryItem = function(id) {
         if (typeof playSound === 'function') playSound('anniversary');
     }
 };
-
 
 // ============================================================
 // 备份与恢复
@@ -771,9 +761,8 @@ function _tryRecoverFromBackup() {
     }
 }
 
-
 // ============================================================
-// saveData —— 保留
+// saveData
 // ============================================================
 const saveData = async () => {
     if (!SESSION_ID) {
@@ -839,9 +828,8 @@ const saveData = async () => {
 
 window.saveData = saveData;
 
-
 // ============================================================
-// initializeRandomUI —— 保留
+// initializeRandomUI
 // ============================================================
 function initializeRandomUI() {
     document.querySelector('.header-motto').textContent = getRandomItem(CONSTANTS.HEADER_MOTTOS);
@@ -993,7 +981,6 @@ function initializeRandomUI() {
     });
 }
 
-
 function manageAutoSendTimer() {
     if (autoSendTimer) {
         clearInterval(autoSendTimer);
@@ -1010,9 +997,8 @@ function manageAutoSendTimer() {
     }
 }
 
-
 // ============================================================
-// updateUI —— 保留
+// updateUI
 // ============================================================
 const updateUI = () => {
     const isCustomTheme = settings.colorTheme.startsWith('custom-');
@@ -1131,9 +1117,8 @@ window.scrollToQuotedMessage = function(el) {
     }, 60);
 };
 
-
 // ============================================================
-// createMessageFragment —— 保留
+// createMessageFragment
 // ============================================================
 function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
     const fragment = new DocumentFragment();
@@ -1394,9 +1379,8 @@ function _updateReadReceiptsDOM() {
     });
 }
 
-
 // ============================================================
-// renderMessages —— 保留
+// renderMessages
 // ============================================================
 function renderMessages(preserveScroll = false) {
     const container = DOMElements.chatContainer;
@@ -1522,10 +1506,8 @@ function _isCaughtUpToLatest() {
     return (c.scrollHeight - c.scrollTop - c.clientHeight) < 100;
 }
 
-
 // ============================================================
-// 【核心】addMessage —— 带角色锁，防串框
-// 新增 silent 参数：后台任务填充消息时不触发 UI 渲染
+// addMessage —— 显式按 message.contactId 判断当前角色
 // ============================================================
 const addMessage = (message, opts) => {
     opts = opts || {};
@@ -1537,35 +1519,37 @@ const addMessage = (message, opts) => {
 
     const isCurrentContact = (message.contactId === window.SESSION_ID);
 
-    // 【后台写入】如果消息不属于当前联系人，只写进该角色的存储，不动 UI
+    // ========== 不是当前角色：后台写入对应存储池 ==========
     if (!isCurrentContact) {
-        if (opts.silent !== true) {
-            // 静默调用（后台任务）—— 写进对应存储池，不动当前 UI
-            (async function () {
-                try {
-                    const key = `${APP_PREFIX}${message.contactId}_chatMessages`;
-                    const existing = await localforage.getItem(key) || [];
-                    existing.push(message);
-                    await localforage.setItem(key, existing);
-                    console.log('[addMessage] 后台写入到', message.contactId, '消息数:', existing.length);
-                    // 通知用户
-                    if (typeof showNotification === 'function') {
-                        const nameMap = { 'role_A': '梦角A', 'role_B': '梦角B' };
-                        const displayName = nameMap[message.contactId] || message.contactId;
-                        const preview = (message.text || '').slice(0, 20) || '[图片]';
-                        showNotification(`💬 ${displayName} 回复了你：${preview}`, 'info', 4000);
-                    }
-                    // 播放提示音
-                    if (typeof playSound === 'function') playSound('message');
-                } catch (e) {
-                    console.warn('[addMessage] 后台写入失败:', e);
+        (async function () {
+            try {
+                const key = `${APP_PREFIX}${message.contactId}_chatMessages`;
+                const existing = (await localforage.getItem(key)) || [];
+                existing.push(message);
+                await localforage.setItem(key, existing);
+                console.log('[addMessage] 后台写入到', message.contactId, '当前共', existing.length, '条');
+
+                if (typeof showNotification === 'function') {
+                    const displayName = _getContactDisplayName(message.contactId);
+                    const preview = (message.text || '').slice(0, 20) || '[图片]';
+                    showNotification(`💬 ${displayName} 回复了你：${preview}`, 'info', 4000);
                 }
-            })();
-        }
+
+                if (typeof playSound === 'function') playSound('message');
+
+                if (message.type === 'normal' && Array.isArray(window._partnerMessageListeners)) {
+                    window._partnerMessageListeners.forEach(function (fn) {
+                        try { fn(message); } catch (e) { console.warn('[onPartnerMessage:listener]', e); }
+                    });
+                }
+            } catch (e) {
+                console.warn('[addMessage] 后台写入失败:', e);
+            }
+        })();
         return;
     }
 
-    // ========== 下面是当前联系人，正常渲染 ==========
+    // ========== 当前角色：正常渲染 ==========
     const container = DOMElements.chatContainer;
     const wasEmpty = messages.length === 0;
 
@@ -1985,9 +1969,8 @@ function positionTypingIndicator() {
     ro.observe(inputArea);
 })();
 
-
 // ============================================================
-// 【核心】_triggerDelayedReply —— 绑定发起时的 SESSION_ID
+// _triggerDelayedReply —— 闭包捕获发起时的角色和设置
 // ============================================================
 window._triggerDelayedReply = function(isUserMessage) {
     if (isBatchMode) return false;
@@ -1995,9 +1978,8 @@ window._triggerDelayedReply = function(isUserMessage) {
         window._companionSilentTrigger = false;
     }
 
-    // 【关键】锁定发起时的角色 ID
     const originContactId = window.SESSION_ID;
-    const originSettings = Object.assign({}, settings);
+    const originSettings = JSON.parse(JSON.stringify(settings));
 
     const delayRange = originSettings.replyDelayMax - originSettings.replyDelayMin;
     const randomDelay = originSettings.replyDelayMin + Math.random() * delayRange;
@@ -2008,7 +1990,7 @@ window._triggerDelayedReply = function(isUserMessage) {
     if (isUserMessage) {
         const readDelay = 1500 + Math.random() * 2500;
         setTimeout(() => {
-            if (window.SESSION_ID !== originContactId) return; // 已切换，跳过
+            if (window.SESSION_ID !== originContactId) return;
             let changed = false;
             messages.forEach(msg => {
                 if (msg.sender === 'user' && msg.status !== 'read') {
@@ -2025,11 +2007,11 @@ window._triggerDelayedReply = function(isUserMessage) {
 
     if (shouldIgnore) return false;
 
-    if (settings.typingIndicatorEnabled) {
+    if (originContactId === window.SESSION_ID && originSettings.typingIndicatorEnabled) {
         const tiWrapper = document.getElementById('typing-indicator-wrapper');
         const tiLabel = document.getElementById('typing-indicator-label');
         const tiAvatar = document.getElementById('typing-indicator-avatar');
-        if (tiLabel) tiLabel.textContent = (settings.partnerName || '对方') + ' 正在输入';
+        if (tiLabel) tiLabel.textContent = (originSettings.partnerName || '对方') + ' 正在输入';
         if (tiWrapper) {
             positionTypingIndicator();
             tiWrapper.style.display = 'block';
@@ -2043,105 +2025,56 @@ window._triggerDelayedReply = function(isUserMessage) {
 
     window._pendingReplyTimer = setTimeout(() => {
         window._pendingReplyTimer = null;
-        // 把角色锁传给 simulateReply
-        simulateReply(originContactId);
+        simulateReply(originContactId, originSettings);
         setTimeout(() => { window._companionSilentTrigger = false; }, (originSettings.replyDelayMax || 3000) + 500);
     }, randomDelay);
     return true;
 };
 
-
 // ============================================================
-// 【核心】simulateReply —— 全流程角色锁
+// simulateReply —— 用 originContactId + originSettings 全流程
 // ============================================================
-window.simulateReply = function(originContactId) {
-    // 没传就默认当前角色
+window.simulateReply = function(originContactId, originSettings) {
     if (!originContactId) originContactId = window.SESSION_ID;
+    if (!originSettings) originSettings = JSON.parse(JSON.stringify(settings));
 
     const isSameContact = (originContactId === window.SESSION_ID);
+    const originPrefix = `${APP_PREFIX}${originContactId}_`;
 
-    function showTypingIndicator() {
-        if (!isSameContact) return; // 切走了就不显示 typing
-        if (!settings.typingIndicatorEnabled) return;
-        const tiWrapper = document.getElementById('typing-indicator-wrapper');
-        const tiLabel = document.getElementById('typing-indicator-label');
-        const tiAvatar = document.getElementById('typing-indicator-avatar');
-        if (tiLabel) tiLabel.textContent = (settings.partnerName || '对方') + ' 正在输入';
-        if (tiWrapper) {
-            positionTypingIndicator();
-            tiWrapper.style.display = 'block';
-        }
-        if (tiAvatar) {
-            const partnerImg = DOMElements.partner.avatar.querySelector('img');
-            tiAvatar.innerHTML = partnerImg ? `<img src="${partnerImg.src}">` : '<i class="fas fa-user"></i>';
-        }
-        if (_isCaughtUpToLatest()) {
-            DOMElements.chatContainer.scrollTop = DOMElements.chatContainer.scrollHeight;
-        }
-    }
-
+    // 决定用哪个 pool
     if (isSameContact) {
-        let changed = false;
-        messages.forEach(msg => {
-            if (msg.sender === 'user' && msg.status !== 'read') {
-                msg.status = 'read'; changed = true;
-            }
+        _runSimulateReplyWithPool(originContactId, originSettings, {
+            customReplies: customReplies,
+            customEmojis: customEmojis,
+            stickerLibrary: stickerLibrary,
+            customReplyGroups: window.customReplyGroups || []
         });
-        if (changed) {
-            _updateReadReceiptsDOM(); throttledSaveData();
-        }
-    }
-
-    if (isSameContact && partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
-        const currentPool = [...partnerPersonas];
-        if(currentPool.length > 0) {
-            const nextPersona = currentPool[Math.floor(Math.random() * currentPool.length)];
-            settings.partnerName = nextPersona.name;
-            DOMElements.partner.name.textContent = nextPersona.name;
-            if (nextPersona.avatar) {
-                updateAvatar(DOMElements.partner.avatar, nextPersona.avatar);
-                localforage.setItem(getStorageKey('partnerAvatar'), nextPersona.avatar);
-            }
-            throttledSaveData();
-        }
-    }
-
-    if (isSameContact && Math.random() < 0.03) {
-        if (typeof window._triggerPartnerPoke === 'function') window._triggerPartnerPoke();
-        return;
-    }
-
-    const replyCount = Math.random() < 0.75 ? 1: (Math.random() < 0.95 ? 2: 3);
-
-    // 【关键】读取的是"发起时所属角色的"回复库，而不是当前角色的
-    let poolCustomReplies = customReplies;
-    let poolCustomEmojis = customEmojis;
-    let poolStickerLibrary = stickerLibrary;
-    let poolCustomReplyGroups = window.customReplyGroups || [];
-
-    if (!isSameContact) {
-        // 切走了：要异步从存储里读发起角色的回复库
-        // 但这里是同步流程，为了不阻塞，先用当前内存的兜底；
-        // 真正的数据安全由 addMessage 的 contactId 保证（消息会存到发起角色的存储池）
-        // 下面用一个异步读取来替换 pool（如果读到了，就用）
+    } else {
         (async function () {
             try {
-                const prefix = `${APP_PREFIX}${originContactId}_`;
                 const [cr, ce, sl, crg] = await Promise.all([
-                    localforage.getItem(prefix + 'customReplies'),
-                    localforage.getItem(prefix + 'customEmojis'),
-                    localforage.getItem(prefix + 'stickerLibrary'),
-                    localforage.getItem(prefix + 'customReplyGroups')
+                    localforage.getItem(originPrefix + 'customReplies'),
+                    localforage.getItem(originPrefix + 'customEmojis'),
+                    localforage.getItem(originPrefix + 'stickerLibrary'),
+                    localforage.getItem(originPrefix + 'customReplyGroups')
                 ]);
-                if (Array.isArray(cr) && cr.length) poolCustomReplies = cr;
-                if (Array.isArray(ce) && ce.length) poolCustomEmojis = ce;
-                if (Array.isArray(sl) && sl.length) poolStickerLibrary = sl;
-                if (Array.isArray(crg) && crg.length) poolCustomReplyGroups = crg;
-            } catch (e) {}
+                _runSimulateReplyWithPool(originContactId, originSettings, {
+                    customReplies: cr || [],
+                    customEmojis: ce || [],
+                    stickerLibrary: sl || [],
+                    customReplyGroups: crg || []
+                });
+            } catch (e) {
+                console.warn('[simulateReply] 后台读取回复库失败:', e);
+            }
         })();
     }
+};
 
-    if (!poolCustomReplies || poolCustomReplies.length === 0) {
+function _runSimulateReplyWithPool(originContactId, originSettings, pool) {
+    const isSameContact = (originContactId === window.SESSION_ID);
+
+    if (!pool.customReplies || pool.customReplies.length === 0) {
         if (isSameContact) showNotification('回复库为空，请先到「自定义回复」中添加内容', 'info', 3500);
         return;
     }
@@ -2153,10 +2086,10 @@ window.simulateReply = function(originContactId) {
         } catch (e) { return new Set(); }
     })();
     const disabledGroupItemsOnce = new Set();
-    poolCustomReplyGroups.forEach(g => {
+    (pool.customReplyGroups || []).forEach(g => {
         if (g.disabled && Array.isArray(g.items)) g.items.forEach(item => disabledGroupItemsOnce.add(item));
     });
-    const replyPoolOnce = poolCustomReplies
+    const replyPoolOnce = pool.customReplies
         .filter(r => !disabledItemsOnce.has(r) && !disabledGroupItemsOnce.has(r))
         .map(r => String(r || '').trim())
         .filter(Boolean);
@@ -2165,65 +2098,60 @@ window.simulateReply = function(originContactId) {
         return;
     }
 
-    showTypingIndicator();
+    if (isSameContact && originSettings.typingIndicatorEnabled) {
+        const tiWrapper = document.getElementById('typing-indicator-wrapper');
+        const tiLabel = document.getElementById('typing-indicator-label');
+        const tiAvatar = document.getElementById('typing-indicator-avatar');
+        if (tiLabel) tiLabel.textContent = (originSettings.partnerName || '对方') + ' 正在输入';
+        if (tiWrapper) {
+            positionTypingIndicator();
+            tiWrapper.style.display = 'block';
+        }
+        if (tiAvatar) {
+            const partnerImg = DOMElements.partner.avatar.querySelector('img');
+            tiAvatar.innerHTML = partnerImg ? `<img src="${partnerImg.src}">` : '<i class="fas fa-user"></i>';
+        }
+    }
+
+    const replyCount = Math.random() < 0.75 ? 1 : (Math.random() < 0.95 ? 2 : 3);
+    const capturedPartnerName = originSettings.partnerName || '对方';
 
     let delay = 0;
-    const recentUserMsgs = (isSameContact && settings.replyEnabled && !window._companionSilentTrigger)
-        ? messages.filter(m => m.sender === 'user' && m.text).slice(-10)
-        : [];
-
-    const capturedPartnerName = (isSameContact ? settings.partnerName : null) || '对方';
-
     for (let i = 0; i < replyCount; i++) {
-        const delayRange = (isSameContact ? settings.replyDelayMax : 7000) - (isSameContact ? settings.replyDelayMin : 3000);
-        delay += (isSameContact ? settings.replyDelayMin : 3000) + Math.random() * delayRange;
+        const delayRange = originSettings.replyDelayMax - originSettings.replyDelayMin;
+        delay += originSettings.replyDelayMin + Math.random() * delayRange;
         setTimeout(() => {
             try {
-                const replyPool = replyPoolOnce;
                 let replyText = '';
-                if (isSameContact && settings.combineReplyCards) {
-                    const maxN = Math.max(1, Math.min(5, parseInt(settings.combineReplyMaxCards, 10) || 3));
+                if (isSameContact && originSettings.combineReplyCards) {
+                    const maxN = Math.max(1, Math.min(5, parseInt(originSettings.combineReplyMaxCards, 10) || 3));
                     const n = 1 + Math.floor(Math.random() * maxN);
                     for (let k = 0; k < n; k++) {
-                        const picked = replyPool[Math.floor(Math.random() * replyPool.length)];
+                        const picked = replyPoolOnce[Math.floor(Math.random() * replyPoolOnce.length)];
                         replyText += picked + (Math.random() < .2 ? '！' : Math.random() < .2 ? '……' : '。');
                     }
                 } else {
                     for (let t = 0; t < 6; t++) {
-                        const picked = replyPool[Math.floor(Math.random() * replyPool.length)];
+                        const picked = replyPoolOnce[Math.floor(Math.random() * replyPoolOnce.length)];
                         if (picked && String(picked).trim()) {
                             replyText = String(picked).trim();
                             break;
                         }
                     }
                 }
-                if (!replyText && i === replyCount - 1) {
-                    (function(){try{if(window._typingIndicatorAutoHideTimer){clearTimeout(window._typingIndicatorAutoHideTimer);window._typingIndicatorAutoHideTimer=null;}}catch(e){}var _tiW=document.getElementById('typing-indicator-wrapper');if(_tiW){var _tiInner=_tiW.querySelector('.typing-indicator');if(_tiInner){_tiInner.classList.add('hiding');setTimeout(function(){_tiW.style.display='none';if(_tiInner)_tiInner.classList.remove('hiding');},240);}else{_tiW.style.display='none';}}})();
-                    return;
-                }
-
-                let disabledStickerItems = new Set();
-                try {
-                    const raw = localStorage.getItem('disabledStickerItems');
-                    if (raw) disabledStickerItems = new Set(JSON.parse(raw));
-                } catch (e) {}
-                const enabledStickerPool = (poolStickerLibrary || []).filter(s => !disabledStickerItems.has(s));
-                const shouldSendSticker = enabledStickerPool.length > 0 && Math.random() < 0.2;
+                if (!replyText) return;
 
                 let finalText = replyText;
                 let separateEmoji = null;
-                if (poolCustomEmojis && poolCustomEmojis.length > 0 && Math.random() < 0.2) {
-                    const emoji = poolCustomEmojis[Math.floor(Math.random() * poolCustomEmojis.length)];
-                    if (settings.emojiMixEnabled !== false) {
-                        finalText = Math.random() < 0.5
-                            ? emoji + ' ' + replyText
-                            : replyText + ' ' + emoji;
+                if (pool.customEmojis && pool.customEmojis.length > 0 && Math.random() < 0.2) {
+                    const emoji = pool.customEmojis[Math.floor(Math.random() * pool.customEmojis.length)];
+                    if (originSettings.emojiMixEnabled !== false) {
+                        finalText = Math.random() < 0.5 ? emoji + ' ' + replyText : replyText + ' ' + emoji;
                     } else {
                         separateEmoji = emoji;
                     }
                 }
 
-                // 【关键】addMessage 会自己判断 contactId 是不是当前角色
                 addMessage({
                     id: Date.now() + i,
                     sender: capturedPartnerName,
@@ -2232,36 +2160,11 @@ window.simulateReply = function(originContactId) {
                     status: 'received',
                     favorited: false,
                     note: null,
-                    replyTo: (i === 0 && recentUserMsgs.length > 0 && Math.random() < 0.3)
-                        ? (function(){ const m = recentUserMsgs[Math.floor(Math.random() * recentUserMsgs.length)]; return { id: m.id, text: m.text, sender: m.sender }; })()
-                        : null,
                     type: 'normal',
-                    contactId: originContactId  // 【关键】消息归属发起时角色
-                }, { silent: !isSameContact });
+                    contactId: originContactId
+                });
 
-                if (isSameContact && typeof window._sendPartnerNotification === 'function') {
-                    window._sendPartnerNotification(capturedPartnerName, finalText);
-                }
-                if (isSameContact) playSound('message');
-
-                if (shouldSendSticker) {
-                    const randomSticker = enabledStickerPool[Math.floor(Math.random() * enabledStickerPool.length)];
-                    setTimeout(() => {
-                        addMessage({
-                            id: Date.now() + i + 2000,
-                            sender: capturedPartnerName,
-                            text: '',
-                            timestamp: new Date(),
-                            image: randomSticker,
-                            status: 'received',
-                            favorited: false,
-                            note: null,
-                            type: 'normal',
-                            contactId: originContactId
-                        }, { silent: !isSameContact });
-                        if (isSameContact) playSound('message');
-                    }, 400 + Math.random() * 600);
-                }
+                if (isSameContact && typeof playSound === 'function') playSound('message');
 
                 if (separateEmoji) {
                     setTimeout(() => {
@@ -2275,8 +2178,8 @@ window.simulateReply = function(originContactId) {
                             note: null,
                             type: 'normal',
                             contactId: originContactId
-                        }, { silent: !isSameContact });
-                        if (isSameContact) playSound('message');
+                        });
+                        if (isSameContact && typeof playSound === 'function') playSound('message');
                     }, 300 + Math.random() * 400);
                 }
 
@@ -2305,636 +2208,27 @@ window.simulateReply = function(originContactId) {
                 }
             } catch (e) {
                 console.error('[simulateReply] 渲染/回填出错:', e);
-                try {
-                    (function(){
-                        try { if (window._typingIndicatorAutoHideTimer) { clearTimeout(window._typingIndicatorAutoHideTimer); window._typingIndicatorAutoHideTimer = null; } } catch (e2) {}
-                        var _tiW2 = document.getElementById('typing-indicator-wrapper');
-                        if (_tiW2) _tiW2.style.display = 'none';
-                    })();
-                } catch (e2) {}
             }
         }, delay);
     }
-};
-
-
-// ============================================================
-// 其余所有函数完全保留
-// ============================================================
-function showModal(modalElement, focusElement = null) {
-    if (modalElement._hideTimeout) {
-        clearTimeout(modalElement._hideTimeout);
-        modalElement._hideTimeout = null;
-    }
-    modalElement.style.display = 'flex';
-    requestAnimationFrame(() => {
-        const content = modalElement.querySelector('.modal-content');
-        if (content) {
-            content.style.opacity = '1';
-            content.style.transform = 'translateY(0) scale(1)';
-        }
-        if (focusElement) {
-            setTimeout(() => focusElement.focus(), 100);
-        }
-    });
 }
 
-function hideModal(modalElement) {
-    const content = modalElement.querySelector('.modal-content');
-    if (content) {
-        content.style.opacity = '0';
-        content.style.transform = 'translateY(20px) scale(0.95)';
-    }
-    if (modalElement._hideTimeout) clearTimeout(modalElement._hideTimeout);
-    modalElement._hideTimeout = setTimeout(() => {
-        modalElement.style.display = 'none';
-    }, 300);
-}
-
-async function viewImage(src) {
-    let displaySrc = src;
-    let downloadHref = src;
-    if (typeof src === 'string' && src.indexOf('oss://') === 0) {
-        if (!window.CloudMedia) return;
-        try {
-            displaySrc = await window.CloudMedia.fetchUrl(src);
-            downloadHref = displaySrc;
-        } catch (e) {
-            if (typeof showNotification === 'function') showNotification('图片加载失败', 'error');
-            return;
-        }
-    } else if (typeof src === 'string' && src.indexOf('pending://') === 0) {
-        if (!window.CloudMedia) return;
-        const base64 = await window.CloudMedia.getPendingBase64(src);
-        if (!base64) {
-            if (typeof showNotification === 'function') showNotification('图片仍在准备中', 'info');
-            return;
-        }
-        displaySrc = base64;
-        downloadHref = base64;
-    }
-    const modal = document.createElement('div');
-    modal.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.92);display:flex;align-items:center;justify-content:center;animation:fadeIn 0.2s ease;touch-action:pinch-zoom;';
-    modal.innerHTML = `
-        <div style="position:relative;max-width:95vw;max-height:92vh;display:flex;align-items:center;justify-content:center;">
-            <img src="${displaySrc}" style="max-width:95vw;max-height:88vh;object-fit:contain;display:block;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,0.6);" draggable="false">
-            <button onclick="this.closest('[style*=fixed]').remove()" style="position:fixed;top:16px;right:16px;width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,0.15);border:1.5px solid rgba(255,255,255,0.3);color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);z-index:10;line-height:1;">×</button>
-            <a href="${downloadHref}" download style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:10px 24px;background:rgba(255,255,255,0.15);border:1.5px solid rgba(255,255,255,0.3);border-radius:20px;color:#fff;font-size:13px;text-decoration:none;backdrop-filter:blur(8px);display:flex;align-items:center;gap:6px;"><i class="fas fa-download"></i> 保存图片</a>
-        </div>`;
-    modal.addEventListener('click', (e) => {
-        if (e.target === modal || e.target.tagName === 'IMG') modal.remove();
-    });
-    document.body.appendChild(modal);
-}
-
-
-async function exportChatHistory() {
-    let _diaryForExport = [];
-    let _moodForExport = null;
-    let _customMoodOptionsForExport = [];
-    try {
-        const _allKeys = await localforage.keys();
-        const _diaryKey = _allKeys.find(k => k.includes('companionDiary') && !k.includes('Bg') && !k.includes('Gallery'));
-        if (_diaryKey) _diaryForExport = (await localforage.getItem(_diaryKey)) || [];
-        const _moodKey = _allKeys.find(k => k.includes('moodCalendar'));
-        if (_moodKey) _moodForExport = (await localforage.getItem(_moodKey)) || {};
-        const _moodOptsKey = _allKeys.find(k => k.includes('customMoodOptions'));
-        if (_moodOptsKey) _customMoodOptionsForExport = (await localforage.getItem(_moodOptsKey)) || [];
-    } catch(e) { _diaryForExport = []; _moodForExport = {}; }
-
-    const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.55);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;animation:fadeIn 0.2s ease;';
-    overlay.innerHTML = `
-        <div style="background:var(--secondary-bg);border-radius:20px;padding:24px;width:88%;max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.4);animation:modalContentSlideIn 0.3s ease forwards;">
-            <div style="font-size:15px;font-weight:700;color:var(--text-primary);margin-bottom:6px;display:flex;align-items:center;gap:8px;">
-                <i class="fas fa-file-export" style="color:var(--accent-color);font-size:14px;"></i>选择导出内容
-            </div>
-            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:16px;">勾选需要导出的数据模块</div>
-            <div style="display:flex;flex-direction:column;gap:9px;margin-bottom:20px;">
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-color);border-radius:12px;background:var(--primary-bg);font-size:13px;color:var(--text-primary);transition:border-color 0.2s;">
-                    <input type="checkbox" id="_exp_msgs" checked style="accent-color:var(--accent-color);width:15px;height:15px;">
-                    <i class="fas fa-comments" style="color:var(--accent-color);width:16px;text-align:center;"></i>
-                    <span>聊天记录 <span style="font-size:11px;color:var(--text-secondary);">(${messages.length} 条)</span></span>
-                </label>
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-color);border-radius:12px;background:var(--primary-bg);font-size:13px;color:var(--text-primary);transition:border-color 0.2s;">
-                    <input type="checkbox" id="_exp_settings" checked style="accent-color:var(--accent-color);width:15px;height:15px;">
-                    <i class="fas fa-sliders-h" style="color:var(--accent-color);width:16px;text-align:center;"></i>
-                    <span>外观与聊天设置</span>
-                </label>
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-color);border-radius:12px;background:var(--primary-bg);font-size:13px;color:var(--text-primary);transition:border-color 0.2s;">
-                    <input type="checkbox" id="_exp_replies" style="accent-color:var(--accent-color);width:15px;height:15px;">
-                    <i class="fas fa-reply" style="color:var(--accent-color);width:16px;text-align:center;"></i>
-                    <span>字卡回复库</span>
-                </label>
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-color);border-radius:12px;background:var(--primary-bg);font-size:13px;color:var(--text-primary);transition:border-color 0.2s;">
-                    <input type="checkbox" id="_exp_ann" style="accent-color:var(--accent-color);width:15px;height:15px;">
-                    <i class="fas fa-calendar-heart" style="color:var(--accent-color);width:16px;text-align:center;"></i>
-                    <span>纪念日 / 倒计时</span>
-                </label>
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-color);border-radius:12px;background:var(--primary-bg);font-size:13px;color:var(--text-primary);transition:border-color 0.2s;">
-                    <input type="checkbox" id="_exp_themes" style="accent-color:var(--accent-color);width:15px;height:15px;">
-                    <i class="fas fa-palette" style="color:var(--accent-color);width:16px;text-align:center;"></i>
-                    <span>自定义主题配色</span>
-                </label>
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-color);border-radius:12px;background:var(--primary-bg);font-size:13px;color:var(--text-primary);transition:border-color 0.2s;">
-                    <input type="checkbox" id="_exp_diary" style="accent-color:var(--accent-color);width:15px;height:15px;">
-                    <i class="fas fa-book-open" style="color:var(--accent-color);width:16px;text-align:center;"></i>
-                    <span>陪伴日记 <span style="font-size:11px;color:var(--text-secondary);">(${_diaryForExport.length} 条)</span></span>
-                </label>
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-color);border-radius:12px;background:var(--primary-bg);font-size:13px;color:var(--text-primary);transition:border-color 0.2s;">
-                    <input type="checkbox" id="_exp_mood" style="accent-color:var(--accent-color);width:15px;height:15px;">
-                    <i class="fas fa-face-smile" style="color:var(--accent-color);width:16px;text-align:center;"></i>
-                    <span>心情手账 <span style="font-size:11px;color:var(--text-secondary);">(${Object.keys(_moodForExport || {}).length} 天)</span></span>
-                </label>
-            </div>
-            <div style="display:flex;gap:10px;">
-                <button id="_exp_cancel" style="flex:1;padding:11px;border:1px solid var(--border-color);border-radius:12px;background:none;color:var(--text-secondary);font-size:13px;cursor:pointer;font-family:var(--font-family);">取消</button>
-                <button id="_exp_confirm" style="flex:2;padding:11px;border:none;border-radius:12px;background:var(--accent-color);color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font-family);display:flex;align-items:center;justify-content:center;gap:7px;">
-                    <i class="fas fa-download"></i>确认导出
-                </button>
-            </div>
-        </div>`;
-    document.body.appendChild(overlay);
-
-    function closeDialog() { overlay.remove(); }
-    overlay.addEventListener('click', e => { if (e.target === overlay) closeDialog(); });
-    const _expCancelBtn = document.getElementById('_exp_cancel');
-    const _expConfirmBtn = document.getElementById('_exp_confirm');
-    if (_expCancelBtn) _expCancelBtn.onclick = closeDialog;
-
-    if (_expConfirmBtn) _expConfirmBtn.onclick = function() {
-        const inclMsgs     = !!document.getElementById('_exp_msgs')?.checked;
-        const inclSettings = !!document.getElementById('_exp_settings')?.checked;
-        const inclReplies  = !!document.getElementById('_exp_replies')?.checked;
-        const inclAnn      = !!document.getElementById('_exp_ann')?.checked;
-        const inclThemes   = !!document.getElementById('_exp_themes')?.checked;
-        const inclDiary    = !!document.getElementById('_exp_diary')?.checked;
-        const inclMood     = !!document.getElementById('_exp_mood')?.checked;
-
-        if (!inclMsgs && !inclSettings && !inclReplies && !inclAnn && !inclThemes && !inclDiary && !inclMood) {
-            showNotification('请至少选择一项导出内容', 'error');
-            return;
-        }
-        closeDialog();
-
-        try {
-            let dgCustomData = null, dgStatusPool = null, customWeatherMap = {};
-            if (inclSettings) {
-                try { dgCustomData = JSON.parse(localStorage.getItem('dg_custom_data') || 'null'); } catch(e2) {}
-                try { dgStatusPool = JSON.parse(localStorage.getItem('dg_status_pool') || 'null'); } catch(e2) {}
-                try {
-                    Object.keys(localStorage).forEach(kk => {
-                        if (kk && kk.startsWith('customWeather_')) {
-                            customWeatherMap[kk] = localStorage.getItem(kk);
-                        }
-                    });
-                } catch(e2) {}
-            }
-
-            const exportObj = {
-                version: '3.1',
-                appName: 'ChatApp',
-                exportDate: new Date().toISOString(),
-                exportModules: []
-            };
-            if (inclMsgs)     {
-                exportObj.messages = messages.map(m => {
-                    const { image, ...rest } = m;
-                    return rest;
-                });
-                exportObj.exportModules.push('messages');
-            }
-            if (inclSettings) {
-                exportObj.settings = settings;
-                exportObj.exportModules.push('settings');
-                exportObj.dgCustomData = dgCustomData;
-                exportObj.dgStatusPool = dgStatusPool;
-                exportObj.customWeatherMap = customWeatherMap;
-            }
-            if (inclReplies)  {
-                exportObj.customReplies = customReplies;
-                if (customEmojis && customEmojis.length > 0) exportObj.customEmojis = customEmojis;
-                if (customPokes && customPokes.length > 0) exportObj.customPokes = customPokes;
-                if (customStatuses && customStatuses.length > 0) exportObj.customStatuses = customStatuses;
-                if (customMottos && customMottos.length > 0) exportObj.customMottos = customMottos;
-                if (customIntros && customIntros.length > 0) exportObj.customIntros = customIntros;
-                if (customPeriodCare && customPeriodCare.length > 0) exportObj.customPeriodCare = customPeriodCare;
-                if (window.customReplyGroups && window.customReplyGroups.length > 0) exportObj.customReplyGroups = window.customReplyGroups;
-                if (window.customPokeGroups && window.customPokeGroups.length > 0) exportObj.customPokeGroups = window.customPokeGroups;
-                if (window.customStatusGroups && window.customStatusGroups.length > 0) exportObj.customStatusGroups = window.customStatusGroups;
-                exportObj.exportModules.push('customReplies');
-            }
-            if (inclAnn)      { exportObj.anniversaries = anniversaries; exportObj.exportModules.push('anniversaries'); }
-            if (inclThemes)   {
-                exportObj.customThemes = customThemes;
-                exportObj.exportModules.push('themes');
-            }
-            if (inclDiary) {
-                exportObj.companionDiary = _diaryForExport;
-                exportObj.exportModules.push('companionDiary');
-            }
-            if (inclMood && _moodForExport && Object.keys(_moodForExport).length > 0) {
-                exportObj.moodCalendar = _moodForExport;
-                if (_customMoodOptionsForExport.length > 0) exportObj.customMoodOptions = _customMoodOptionsForExport;
-                exportObj.exportModules.push('moodCalendar');
-            }
-
-            const dataStr = JSON.stringify(exportObj, null, 2);
-            const parts = exportObj.exportModules.join('+');
-            const fileName = `chat-export-${parts}-${new Date().toISOString().slice(0,10)}.json`;
-
-            if (navigator.share && /Mobile|Android|iPhone|iPad/.test(navigator.userAgent)) {
-                const blob = new Blob([dataStr], { type: 'application/json;charset=utf-8' });
-                const file = new File([blob], fileName, { type: 'application/json' });
-                if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                    navigator.share({ files: [file], title: '传讯数据导出', text: `导出日期：${new Date().toLocaleDateString()}` })
-                        .catch(() => fallbackExport(dataStr, fileName));
-                    return;
-                }
-            }
-            fallbackExport(dataStr, fileName);
-        } catch (error) {
-            console.error('导出失败:', error);
-            showNotification('导出失败，请重试', 'error');
-        }
-    };
-}
-
-function fallbackExport(dataStr, fileName) {
-    fileName = fileName || `chat-backup-${SESSION_ID}-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
-    const dataBlob = new Blob([dataStr], { type: 'application/json;charset=utf-8' });
-    const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = fileName;
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    setTimeout(() => URL.revokeObjectURL(url), 2000);
-    showNotification('导出成功', 'success');
-}
-
-function importChatHistory(file) {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        try {
-            let rawText = e.target.result;
-            if (rawText.charCodeAt(0) === 0xFEFF) rawText = rawText.slice(1);
-            let importedData = JSON.parse(rawText);
-
-            if (importedData && typeof importedData === 'object' &&
-                (importedData.type === 'full' || importedData.indexedDB || importedData.localforage) &&
-                !importedData.messages && !importedData.settings) {
-
-                const idb = importedData.indexedDB || importedData.localforage || {};
-                const ls  = importedData.localStorage || {};
-                const allKv = Object.assign({}, idb, ls);
-
-                let detectedSid = null;
-                const appPfx = importedData.appPrefix || 'CHAT_APP_V3_';
-                for (const k of Object.keys(allKv)) {
-                    if (k.indexOf('_chatMessages') !== -1 && k.startsWith(appPfx)) {
-                        const after = k.slice(appPfx.length);
-                        const u = after.indexOf('_');
-                        if (u > 0) { detectedSid = after.slice(0, u); break; }
-                    }
-                }
-
-                const pfxSid = detectedSid ? (appPfx + detectedSid + '_') : null;
-                const getVal = (suffix) => {
-                    if (pfxSid) {
-                        const v = allKv[pfxSid + suffix];
-                        if (v !== undefined && v !== null) return v;
-                    }
-                    return allKv[suffix] !== undefined ? allKv[suffix] : null;
-                };
-                const parseVal = (v) => {
-                    if (v === null || v === undefined) return null;
-                    if (typeof v !== 'string') return v;
-                    try { return JSON.parse(v); } catch(e2) { return v; }
-                };
-
-                const converted = {
-                    version: importedData.version || '3.1',
-                    appName:  importedData.appName || 'ChatApp',
-                    exportDate: importedData.exportDate || importedData.timestamp || new Date().toISOString(),
-                    exportModules: []
-                };
-
-                const msgs = parseVal(getVal('chatMessages'));
-                if (Array.isArray(msgs)) { converted.messages = msgs; converted.exportModules.push('messages'); }
-
-                const chatSettings = parseVal(getVal('chatSettings'));
-                if (chatSettings && typeof chatSettings === 'object') {
-                    converted.settings = chatSettings;
-                    converted.exportModules.push('settings');
-                }
-                const dgCustomData = parseVal(ls['dg_custom_data'] !== undefined ? ls['dg_custom_data'] : null);
-                if (dgCustomData) converted.dgCustomData = dgCustomData;
-                const dgStatusPool = parseVal(ls['dg_status_pool'] !== undefined ? ls['dg_status_pool'] : null);
-                if (dgStatusPool) converted.dgStatusPool = dgStatusPool;
-                const customWeatherMap = {};
-                for (const wk of Object.keys(ls)) {
-                    if (wk && wk.startsWith('customWeather_')) customWeatherMap[wk] = ls[wk];
-                }
-                if (Object.keys(customWeatherMap).length) converted.customWeatherMap = customWeatherMap;
-
-                const replies = parseVal(getVal('customReplies'));
-                if (Array.isArray(replies)) { converted.customReplies = replies; converted.exportModules.push('customReplies'); }
-
-                const emojis = parseVal(getVal('customEmojis'));
-                if (Array.isArray(emojis)) converted.customEmojis = emojis;
-
-                const ann = parseVal(getVal('anniversaries'));
-                if (Array.isArray(ann)) { converted.anniversaries = ann; converted.exportModules.push('anniversaries'); }
-
-                const themes = parseVal(allKv[appPfx + 'customThemes'] !== undefined ? allKv[appPfx + 'customThemes'] : (ls[appPfx + 'customThemes'] || null));
-                if (themes) { converted.customThemes = themes; converted.exportModules.push('themes'); }
-
-                importedData = converted;
-            }
-
-            const hasMessages  = importedData.messages && Array.isArray(importedData.messages);
-            const hasSettings  = !!importedData.settings;
-            const hasReplies   = importedData.customReplies && Array.isArray(importedData.customReplies);
-            const hasAnn       = importedData.anniversaries && Array.isArray(importedData.anniversaries);
-            const hasThemes    = !!importedData.customThemes || !!importedData.stickerLibrary;
-            const hasDiary     = importedData.companionDiary && Array.isArray(importedData.companionDiary);
-            const hasMood      = !!importedData.moodCalendar && typeof importedData.moodCalendar === 'object';
-
-            if (!hasMessages && !hasSettings && !hasReplies && !hasAnn && !hasThemes && !hasDiary && !hasMood) {
-                throw new Error('无效的聊天记录文件（未检测到可识别的数据模块）');
-            }
-
-            const overlay = document.createElement('div');
-            overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.55);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;animation:fadeIn 0.2s ease;';
-
-            const makeRow = (id, icon, label, sublabel, available, checked) => {
-                if (!available) return '';
-                return `<label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-color);border-radius:12px;background:var(--primary-bg);font-size:13px;color:var(--text-primary);">
-                    <input type="checkbox" id="${id}" ${checked ? 'checked' : ''} style="accent-color:var(--accent-color);width:15px;height:15px;">
-                    <i class="${icon}" style="color:var(--accent-color);width:16px;text-align:center;"></i>
-                    <span>${label}${sublabel ? `<span style="font-size:11px;color:var(--text-secondary);margin-left:4px;">${sublabel}</span>` : ''}</span>
-                </label>`;
-            };
-
-            overlay.innerHTML = `
-                <div style="background:var(--secondary-bg);border-radius:20px;padding:24px;width:88%;max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.4);animation:modalContentSlideIn 0.3s ease forwards;">
-                    <div style="font-size:15px;font-weight:700;color:var(--text-primary);margin-bottom:6px;display:flex;align-items:center;gap:8px;">
-                        <i class="fas fa-file-import" style="color:var(--accent-color);font-size:14px;"></i>选择导入内容
-                    </div>
-                    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:16px;">文件中检测到以下数据，选择要导入的模块</div>
-                    <div style="display:flex;flex-direction:column;gap:9px;margin-bottom:20px;">
-                        ${makeRow('_imp_msgs', 'fas fa-comments', '聊天记录', hasMessages ? `(${importedData.messages.length} 条)` : '', hasMessages, true)}
-                        ${makeRow('_imp_settings', 'fas fa-sliders-h', '外观与聊天设置', '', hasSettings, true)}
-                        ${makeRow('_imp_replies', 'fas fa-reply', '字卡回复库', '', hasReplies, false)}
-                        ${makeRow('_imp_ann', 'fas fa-calendar-heart', '纪念日 / 倒计时', '', hasAnn, false)}
-                        ${makeRow('_imp_themes', 'fas fa-palette', '自定义主题配色', '', hasThemes, false)}
-                        ${makeRow('_imp_diary', 'fas fa-book-open', '陪伴日记', hasDiary ? `(${importedData.companionDiary.length} 条)` : '', hasDiary, false)}
-                        ${makeRow('_imp_mood', 'fas fa-face-smile', '心情手账', hasMood ? `(${Object.keys(importedData.moodCalendar).length} 天)` : '', hasMood, false)}
-                    </div>
-                    <div style="display:flex;gap:10px;">
-                        <button id="_imp_cancel" style="flex:1;padding:11px;border:1px solid var(--border-color);border-radius:12px;background:none;color:var(--text-secondary);font-size:13px;cursor:pointer;font-family:var(--font-family);">取消</button>
-                        <button id="_imp_confirm" style="flex:2;padding:11px;border:none;border-radius:12px;background:var(--accent-color);color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font-family);display:flex;align-items:center;justify-content:center;gap:7px;">
-                            <i class="fas fa-upload"></i>确认导入
-                        </button>
-                    </div>
-                </div>`;
-            document.body.appendChild(overlay);
-
-            function closeDialog() { overlay.remove(); }
-            overlay.addEventListener('click', ev => { if (ev.target === overlay) closeDialog(); });
-            const _impCancelBtn = document.getElementById('_imp_cancel');
-            const _impConfirmBtn = document.getElementById('_imp_confirm');
-            if (_impCancelBtn) _impCancelBtn.onclick = closeDialog;
-
-            if (_impConfirmBtn) _impConfirmBtn.onclick = function() {
-                const doMsgs     = hasMessages  && !!document.getElementById('_imp_msgs')?.checked;
-                const doSettings = hasSettings  && !!document.getElementById('_imp_settings')?.checked;
-                const doReplies  = hasReplies   && !!document.getElementById('_imp_replies')?.checked;
-                const doAnn      = hasAnn       && !!document.getElementById('_imp_ann')?.checked;
-                const doThemes   = hasThemes    && !!document.getElementById('_imp_themes')?.checked;
-                const doDiary    = hasDiary     && !!document.getElementById('_imp_diary')?.checked;
-                const doMood     = hasMood      && !!document.getElementById('_imp_mood')?.checked;
-
-                if (!doMsgs && !doSettings && !doReplies && !doAnn && !doThemes && !doDiary && !doMood) {
-                    showNotification('请至少选择一项导入内容', 'error');
-                    return;
-                }
-
-                if (doMsgs && messages.length > 0 && !confirm('导入将覆盖当前会话的聊天记录，确定继续吗？')) return;
-                closeDialog();
-
-                if (doMsgs) {
-                    messages = importedData.messages
-                        .filter(m => !m.contactId || m.contactId === SESSION_ID)
-                        .map(m => ({ ...m, timestamp: new Date(m.timestamp), contactId: SESSION_ID }));
-                }
-                if (doSettings) {
-                    if (importedData.settings) {
-                        Object.assign(settings, importedData.settings);
-                        try {
-                            if (settings.customFontUrl) applyCustomFont(settings.customFontUrl);
-                            if (settings.customBubbleCss) applyCustomBubbleCss(settings.customBubbleCss);
-                            if (settings.customGlobalCss) applyGlobalThemeCss(settings.customGlobalCss);
-                        } catch(e2) { console.warn('导入后样式应用失败', e2); }
-                    }
-                    if (importedData.dgCustomData) { try { localStorage.setItem('dg_custom_data', JSON.stringify(importedData.dgCustomData)); } catch(e2) {} }
-                    if (importedData.dgStatusPool) { try { localStorage.setItem('dg_status_pool', JSON.stringify(importedData.dgStatusPool)); } catch(e2) {} }
-                    if (importedData.customWeatherMap) { try { Object.keys(importedData.customWeatherMap).forEach(wk => localStorage.setItem(wk, importedData.customWeatherMap[wk])); } catch(e2) {} }
-                }
-                if (doReplies  && importedData.customReplies)  customReplies  = importedData.customReplies;
-                if (doReplies  && importedData.customEmojis && Array.isArray(importedData.customEmojis)) customEmojis = importedData.customEmojis;
-                if (doReplies  && importedData.customPokes && Array.isArray(importedData.customPokes)) customPokes = importedData.customPokes;
-                if (doReplies  && importedData.customStatuses && Array.isArray(importedData.customStatuses)) customStatuses = importedData.customStatuses;
-                if (doReplies  && importedData.customMottos && Array.isArray(importedData.customMottos)) customMottos = importedData.customMottos;
-                if (doReplies  && importedData.customPeriodCare && Array.isArray(importedData.customPeriodCare)) customPeriodCare = importedData.customPeriodCare;
-                if (doReplies  && importedData.customIntros && Array.isArray(importedData.customIntros)) customIntros = importedData.customIntros;
-                if (doReplies  && importedData.customReplyGroups) window.customReplyGroups = importedData.customReplyGroups;
-                if (doReplies  && importedData.customPokeGroups) window.customPokeGroups = importedData.customPokeGroups;
-                if (doReplies  && importedData.customStatusGroups) window.customStatusGroups = importedData.customStatusGroups;
-                if (doAnn      && importedData.anniversaries)   anniversaries  = importedData.anniversaries;
-                if (doThemes   && importedData.customThemes)    customThemes   = importedData.customThemes;
-                if (doThemes   && importedData.stickerLibrary)  stickerLibrary = importedData.stickerLibrary;
-                if (doDiary    && importedData.companionDiary && typeof window._setCompanionDiaryEntries === 'function') {
-                    window._setCompanionDiaryEntries(importedData.companionDiary);
-                }
-                if (doMood && importedData.moodCalendar && typeof window._setMoodData === 'function') {
-                    window._setMoodData(importedData.moodCalendar, importedData.customMoodOptions || []);
-                }
-
-                saveData();
-                if (doMsgs && typeof renderMessages === 'function') renderMessages();
-                if (typeof applySettings === 'function') applySettings();
-                updateUI();
-                const count = doMsgs ? `${messages.length} 条消息` : '所选数据';
-                showNotification(`成功导入${count}`, 'success');
-            };
-        } catch (error) {
-            console.error('导入失败:', error);
-            showNotification('文件格式错误或已损坏', 'error');
-        }
-    };
-    reader.onerror = () => showNotification('文件读取失败', 'error');
-    reader.readAsText(file);
-}
-
-
-window._triggerStatusChange = function() {
-    let newStatus = null;
-
-    const groups = window.customStatusGroups || [];
-    const allStatuses = (typeof customStatuses !== 'undefined' ? customStatuses : []) || [];
-
-    const enabledGroups = groups.filter(function(g) {
-        return !g.disabled && Array.isArray(g.items) && g.items.length > 0;
-    });
-
-    const groupedItems = new Set();
-    enabledGroups.forEach(function(g) { g.items.forEach(function(t) { groupedItems.add(t); }); });
-
-    const ungroupedStatuses = allStatuses.filter(function(t) { return !groupedItems.has(t); });
-
-    if (enabledGroups.length > 0) {
-        const pickedGroup = enabledGroups[Math.floor(Math.random() * enabledGroups.length)];
-        const groupPool = pickedGroup.items.filter(function(t) { return allStatuses.includes(t); });
-        if (groupPool.length > 0) {
-            newStatus = groupPool[Math.floor(Math.random() * groupPool.length)];
-        }
-    }
-
-    if (!newStatus && ungroupedStatuses.length > 0) {
-        newStatus = ungroupedStatuses[Math.floor(Math.random() * ungroupedStatuses.length)];
-    }
-    if (!newStatus && allStatuses.length > 0) {
-        newStatus = allStatuses[Math.floor(Math.random() * allStatuses.length)];
-    }
-    if (!newStatus && CONSTANTS.PARTNER_STATUSES && CONSTANTS.PARTNER_STATUSES.length > 0) {
-        newStatus = getRandomItem(CONSTANTS.PARTNER_STATUSES);
-    }
-    if (!newStatus) {
-        return;
-    }
-
-    settings.partnerStatus = newStatus;
-    settings.lastStatusChange = Date.now();
-    settings.nextStatusChange = 1 + Math.random() * 7;
-    DOMElements.partner.status.textContent = newStatus;
-    throttledSaveData();
-};
-
-const checkStatusChange = () => {
-    if ((Date.now() - settings.lastStatusChange) / 36e5 >= settings.nextStatusChange) {
-        window._triggerStatusChange();
-    }
-};
-
-
-function getStorageKey(baseKey) {
-    if (!SESSION_ID) {
-        console.error('[getStorageKey] SESSION_ID 尚未初始化，拒绝生成存储键:', baseKey);
-        throw new Error('SESSION_ID 未初始化，存储操作已中止');
-    }
-    return `${APP_PREFIX}${SESSION_ID}_${baseKey}`;
-}
-
-function favAudioKey(messageId) {
-    return getStorageKey(`favAudio_${messageId}`);
-}
-window.favAudioKey = favAudioKey;
-
-
-async function migrateData() {
-    const isMigrated = await localforage.getItem(APP_PREFIX + 'MIGRATION_V2_DONE');
-    if (isMigrated) return;
-
-    try {
-        const keys = Object.keys(localStorage);
-        for (const key of keys) {
-            if (key.startsWith(APP_PREFIX)) {
-                try {
-                    const val = localStorage.getItem(key);
-                    if (val) {
-                        let dataToStore = val;
-                        try {
-                            if (val.startsWith('{') || val.startsWith('[')) {
-                                dataToStore = JSON.parse(val);
-                            }
-                        } catch (e) {
-                            console.warn(`迁移期间解析数据失败: ${key}，将作为原始字符串存储。`, e);
-                        }
-                        await localforage.setItem(key, dataToStore);
-                    }
-                } catch (e) {
-                    console.error(`迁移键值 ${key} 时发生错误，已跳过。`, e);
-                }
-            }
-        }
-
-        await localforage.setItem(APP_PREFIX + 'MIGRATION_V2_DONE', 'true');
-    } catch (e) {
-        console.error("数据迁移过程中发生严重错误:", e);
-        showNotification('数据迁移失败，部分旧数据可能丢失', 'error');
-    }
-}
-
-window.initializeSession = async function() {
-    await migrateData();
-
-    const sessionsData = await localforage.getItem(`${APP_PREFIX}sessionList`);
-    sessionList = sessionsData || [];
-
-    let savedRole = localStorage.getItem('active_contact_role');
-
-    if (savedRole) {
-        SESSION_ID = savedRole;
-    } else {
-        if (sessionList.length > 0) {
-            const lastId = await localforage.getItem(`${APP_PREFIX}lastSessionId`);
-            SESSION_ID = lastId && sessionList.some(s => s.id === lastId) ? lastId : sessionList[0].id;
-        } else {
-            SESSION_ID = await createNewSession(false);
-        }
-        localStorage.setItem('active_contact_role', 'role_A');
-    }
-
-    window.currentContactId = SESSION_ID;
-    await localforage.setItem(`${APP_PREFIX}lastSessionId`, SESSION_ID);
-
-    if (window.location.search.includes('role=')) {
-        const cleanUrl = window.location.pathname + window.location.hash;
-        window.history.replaceState({}, document.title, cleanUrl);
-    }
-}
-
-
-// ============================================================
-// switchActiveContact —— 切换（不动异步回复任务，让它后台继续）
-// ============================================================
 window.switchActiveContact = async function(nextRole, nextName) {
-    // 1. 保存当前角色数据（此时 SESSION_ID 还是旧的）
     if (typeof window.saveData === 'function') {
         try { await window.saveData(); } catch (e) { console.warn('[switchActiveContact] 保存旧角色失败:', e); }
     }
 
-    // 【关键】不清除 _pendingReplyTimer！
-    // 让旧角色的异步回复任务继续跑，它会通过 contactId 自动写入旧角色的存储池
-
-    // 2. 切换 SESSION_ID
     SESSION_ID = nextRole;
     window.currentContactId = nextRole;
     localStorage.setItem('active_contact_role', nextRole);
     await localforage.setItem(`${APP_PREFIX}lastSessionId`, nextRole);
 
-    // 3. 清空消息和界面
     if (typeof DOMElements !== 'undefined' && DOMElements.chatContainer) {
         DOMElements.chatContainer.innerHTML = '';
     }
     messages = [];
     window.messages = [];
 
-    // 4. 清空回复库全局变量
     customReplies = [];
     window.customReplies = [];
     window._customReplies = [];
@@ -2943,22 +2237,18 @@ window.switchActiveContact = async function(nextRole, nextName) {
     stickerLibrary = [];
     myStickerLibrary = [];
 
-    // 5. 重置浏览状态
     msgViewMode = 'latest';
     msgWinStart = 0;
     msgWinEnd = 0;
     newMsgCountWhileBrowsing = 0;
 
-    // 6. 隐藏 typing indicator（防止切换后还显示旧角色的"正在输入"）
     const tiWrapper = document.getElementById('typing-indicator-wrapper');
     if (tiWrapper) tiWrapper.style.display = 'none';
 
-    // 7. 重新加载新角色数据
     if (typeof window.loadData === 'function') {
         await window.loadData();
     }
 
-    // 8. 更新界面名字
     const nameEl = document.getElementById('partner-name');
     if (nameEl && window.settings) {
         if (!window.settings.partnerName || window.settings.partnerName === '梦角') {
@@ -2971,8 +2261,3 @@ window.switchActiveContact = async function(nextRole, nextName) {
         showNotification(`已切换至 ${nextName} ✦`, 'success', 1500);
     }
 };
-
-
-window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-    document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
-});
