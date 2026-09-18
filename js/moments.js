@@ -1,15 +1,12 @@
-// moments.js - 朋友圈功能（完整版 · 字卡动态版 · 每日随机2-4条动态 · 头像跟随自定义 · 纯URL · 多角色隔离版）
+// moments.js - 朋友圈功能（完整版 · 字卡动态版 · 每日随机2-4条 · 头像跟随自定义 · 纯URL · 多角色隔离版 · 时间均匀散布 · 历史不清空）
 (function() {
     'use strict';
-
     var STORAGE_KEY = 'moments_data';
     var COVER_KEY = 'moments_cover_image';
-    var MAX_POSTS = 100;
-
+    var MAX_POSTS = 200;
     var AUTO_INTERACT_PROBABILITY = 0.6;
     var REPLY_DELAY_MIN = 30 * 1000;
     var REPLY_DELAY_MAX = 10 * 60 * 1000;
-
     // 安全获取隔离键：优先使用 getStorageKey，如果它不存在则回退到原键名
     function _sk(key) {
         try {
@@ -21,7 +18,6 @@
         }
         return key;
     }
-
     // =============================================
     // 字卡数据库（来源于 动态.docx）
     // =============================================
@@ -62,7 +58,7 @@
         "如你所愿", "当然可以", "愿意", "听懂了", "理解对了", "是", "我愿意", "我感受的到你",
         "我会", "我当然存在呀", "我现在在你旁边坐着", "我喜欢你❤️", "喜欢你！",
         "最喜欢你啦！", "我最喜欢你了", "永远喜欢你", "越来越喜欢你", "喜欢到不行", "满心满眼都是你",
-        "只喜欢你！", "只能是你✨", "非你不可", "必须是你", "一直都是你", "这辈子都是你", "永远都是你",
+        "只喜欢你！", "只能是你✨", "非你不可", "必须是", "一直都是你", "这辈子都是你", "永远都是你",
         "你是我的唯一", "我是你的唯一", "我是你的🥺", "整个人都是你的", "我的所有都给你", "只要你想要",
         "有你就够了", "你是我的全世界", "你最重要！", "你最特别！", "你很重要💫", "我本来就偏心你",
         "你开心我就开心", "看到你笑我也开心", "你笑起来超好看", "你眼睛超好看", "你声音好好听",
@@ -213,7 +209,6 @@
         "我在中国工作的天", "差一步美满就牵着手走散～", "嘎哒嘎哒", "让笑发酵一会",
         "让悲伤发酵一会", "我把ta冻起来 明天中午吃", "听说你还在搞什么原创🎶"
     ];
-
     // =============================================
     // 工具函数
     // =============================================
@@ -228,7 +223,6 @@
         }
         return shuffled.slice(0, count);
     }
-
     function _generatePartnerPostText() {
         var count = 2 + Math.floor(Math.random() * 2);
         var picked = _pickRandomCards(count);
@@ -240,7 +234,6 @@
         }
         return result;
     }
-
     function _generateRandomReply() {
         var count = 1 + Math.floor(Math.random() * 2);
         var picked = _pickRandomCards(count);
@@ -252,7 +245,6 @@
         }
         return result;
     }
-
     // ===== 群成员（隔离键）=====
     function _getGroupMembers() {
         try {
@@ -266,15 +258,12 @@
         } catch(e) {}
         return [];
     }
-
     function _saveGroupMembers(members) {
         localStorage.setItem(_sk('moments_group_members'), JSON.stringify(members));
     }
-
     function _getMyName() {
         return (typeof settings !== 'undefined' && settings.myName) ? settings.myName : '我';
     }
-
     function _notify(msg, type, duration) {
         type = type || 'info';
         duration = duration || 2000;
@@ -284,25 +273,20 @@
             alert(msg);
         }
     }
-
     function _esc(s) {
         return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
-
     function _generateId() {
         return Date.now() + '_' + Math.random().toString(36).substr(2, 6);
     }
-
     // ===== 封面（隔离键）=====
     function _getCoverImage() {
         try { return localStorage.getItem(_sk(COVER_KEY)) || ''; } catch(e) { return ''; }
     }
     function _setCoverImage(data) { localStorage.setItem(_sk(COVER_KEY), data); }
     function _clearCoverImage() { localStorage.removeItem(_sk(COVER_KEY)); }
-
     var MY_NAME_KEY = 'moments_my_name';
     var MY_AVATAR_KEY = 'moments_my_avatar';
-
     function _getMyNameSetting() {
         try { return localStorage.getItem(_sk(MY_NAME_KEY)) || _getMyName(); } catch(e) { return _getMyName(); }
     }
@@ -315,7 +299,6 @@
     function _setMyAvatarSetting(data) {
         localStorage.setItem(_sk(MY_AVATAR_KEY), data);
     }
-
     function _getMemberAvatar(name) {
         var members = _getGroupMembers();
         for (var i = 0; i < members.length; i++) {
@@ -325,7 +308,6 @@
         }
         return '';
     }
-
     function _setMemberAvatar(name, avatar) {
         var members = _getGroupMembers();
         for (var i = 0; i < members.length; i++) {
@@ -336,7 +318,6 @@
         }
         _saveGroupMembers(members);
     }
-
     function _updateMemberName(oldName, newName) {
         var members = _getGroupMembers();
         for (var i = 0; i < members.length; i++) {
@@ -370,13 +351,11 @@
         }
         if (updated) _setData(data);
     }
-
     function _addGroupMember(name, avatar) {
         var members = _getGroupMembers();
         members.push({ name: name.trim(), avatar: avatar || '' });
         _saveGroupMembers(members);
     }
-
     function _removeGroupMember(name) {
         var members = _getGroupMembers();
         members = members.filter(function(m) { return m.name !== name; });
@@ -387,20 +366,17 @@
         });
         _setData(data);
     }
-
     // ===== 主数据（隔离键）=====
     function _getData() {
         try { return JSON.parse(localStorage.getItem(_sk(STORAGE_KEY))) || { posts: [], lastGenerateDate: '' }; } catch(e) { return { posts: [], lastGenerateDate: '' }; }
     }
     function _setData(data) { localStorage.setItem(_sk(STORAGE_KEY), JSON.stringify(data)); }
-
     function _getPosts() {
         var data = _getData();
         return data.posts.sort(function(a, b) {
             return new Date(b.timestamp) - new Date(a.timestamp);
         });
     }
-
     function _addPost(author, text, timestamp, memberName, memberAvatar) {
         var data = _getData();
         var post = {
@@ -419,13 +395,11 @@
         _setData(data);
         return post;
     }
-
     function _deletePost(postId) {
         var data = _getData();
         data.posts = data.posts.filter(function(p) { return p.id !== postId; });
         _setData(data);
     }
-
     function _toggleLike(postId) {
         var data = _getData();
         var post = data.posts.find(function(p) { return p.id === postId; });
@@ -453,7 +427,6 @@
         }
         _setData(data);
     }
-
     function _addComment(postId, author, text, memberName) {
         var data = _getData();
         var post = data.posts.find(function(p) { return p.id === postId; });
@@ -470,7 +443,6 @@
         _setData(data);
         return comment;
     }
-
     function _appendCommentThread(postId, commentId, author, text, memberName) {
         var data = _getData();
         var post = data.posts.find(function(p) { return p.id === postId; });
@@ -489,7 +461,6 @@
         _setData(data);
         return entry;
     }
-
     // =============================================
     // 群成员主动互动
     // =============================================
@@ -500,29 +471,22 @@
         }
         var members = _getGroupMembers();
         if (members.length === 0) return;
-
         var delayMs = (1 + Math.random() * 29) * 60 * 1000;
         console.log('[朋友圈] 群成员将在 ' + (delayMs / 60000).toFixed(1) + ' 分钟后互动');
-
         setTimeout(function() {
             var data = _getData();
             var post = data.posts.find(function(p) { return p.id === postId; });
             if (!post) return;
-
             var likeCount = 1 + Math.floor(Math.random() * 3);
             var shuffledLike = members.slice().sort(function() { return Math.random() - 0.5; });
             var likers = shuffledLike.slice(0, Math.min(likeCount, members.length));
-
             var commentCount = 1 + Math.floor(Math.random() * 2);
             var shuffledComment = members.slice().sort(function() { return Math.random() - 0.5; });
             var commenters = shuffledComment.slice(0, Math.min(commentCount, members.length));
-
             var freshData = _getData();
             var freshPost = freshData.posts.find(function(p) { return p.id === postId; });
             if (!freshPost) return;
-
             freshPost.likes += likers.length;
-
             for (var i = 0; i < commenters.length; i++) {
                 var cm = commenters[i];
                 var commentText = _generateRandomReply();
@@ -536,7 +500,6 @@
                 });
             }
             _setData(freshData);
-
             var likerNames = likers.map(function(m) { return m.name; }).join('、');
             var commenterNames = commenters.map(function(m) { return m.name; }).join('、');
             var msgParts = [];
@@ -545,25 +508,21 @@
             if (msgParts.length > 0 && typeof showNotification === 'function') {
                 showNotification('💬 ' + msgParts.join('，'), 'info', 3000);
             }
-
             var container = document.getElementById('moments-content');
             var activeTab = document.querySelector('.moments-tab.active');
             if (container && activeTab) renderTab(activeTab.dataset.tab, container);
         }, delayMs);
     }
-
     // =============================================
-    // 每日生成 partner 动态（每天随机 2~4 条，成员随机）
+    // 每日生成 partner 动态（每天随机 2~4 条，时间均匀散布全天，历史保留不清空）
     // =============================================
     function _forceGeneratePartnerPosts() {
         var data = _getData();
         var today = new Date().toDateString();
-
         if (data.lastGenerateDate === today) {
             console.log('[朋友圈] 今日已生成动态，跳过');
             return;
         }
-
         var members = _getGroupMembers();
         if (members.length === 0) {
             console.log('[朋友圈] 群成员为空，无法生成动态');
@@ -571,24 +530,27 @@
             _setData(data);
             return;
         }
-
-        data.posts = data.posts.filter(function(p) { return p.author !== 'partner'; });
-
+        // 【修复】不再清空历史动态：跨天时旧动态（含昨天及更早的）全部保留，
+        // 只把今天新生成的动态追加到前面，避免"0点前一天内容就刷新不见"。
         var count = 2 + Math.floor(Math.random() * 3);
         console.log('[朋友圈] 今日生成 ' + count + ' 条成员动态');
-
         var now = new Date();
         var nowMs = now.getTime();
         var todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-
+        // 今天已过去的时间长度（至少按 1 分钟算，避免凌晨刚打开就扎堆在同一秒）
+        var dayElapsed = Math.max(60 * 1000, nowMs - todayStart);
+        var segment = dayElapsed / count;
         var newPosts = [];
         for (var idx = 0; idx < count; idx++) {
             var member = members[Math.floor(Math.random() * members.length)];
             var text = _generatePartnerPostText();
-
-            var randomMs = todayStart + Math.random() * (nowMs - todayStart);
+            // 【修复】把 count 条动态均匀分到今天已过去的时间段里，每段内再随机：
+            // 这样几条动态的时间戳会拉开间距，不会扎堆挤在同一个时间。
+            var segStart = todayStart + segment * idx;
+            var segEnd = todayStart + segment * (idx + 1);
+            var randomMs = segStart + Math.random() * Math.max(1000, segEnd - segStart);
+            if (randomMs > nowMs) randomMs = nowMs;
             var ts = new Date(randomMs);
-
             newPosts.push({
                 id: _generateId(),
                 author: 'partner',
@@ -601,18 +563,15 @@
                 memberAvatar: member.avatar || ''
             });
         }
-
         newPosts.sort(function(a, b) {
             return new Date(b.timestamp) - new Date(a.timestamp);
         });
-
+        // 新动态在前，旧动态保留在后；最多保留 MAX_POSTS 条（已调大到 200）
         data.posts = newPosts.concat(data.posts);
         if (data.posts.length > MAX_POSTS) data.posts = data.posts.slice(0, MAX_POSTS);
-
         data.lastGenerateDate = today;
         _setData(data);
     }
-
     function formatTime(iso) {
         var date = new Date(iso);
         var now = new Date();
@@ -623,7 +582,6 @@
         if (diff < 172800) return '昨天 ' + date.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
         return date.toLocaleDateString([], {month:'short', day:'numeric'}) + ' ' + date.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
     }
-
     function _avatarHtmlForMember(memberName, size) {
         size = size || 18;
         var avatarUrl = _getMemberAvatar(memberName);
@@ -632,7 +590,6 @@
         }
         return '<span style="display:inline-flex;align-items:center;justify-content:center;width:' + size + 'px;height:' + size + 'px;border-radius:50%;background:rgba(var(--accent-color-rgb),0.12);font-size:' + Math.round(size * 0.6) + 'px;vertical-align:middle;flex-shrink:0;">🌸</span>';
     }
-
     function _avatarHtmlForMe(size) {
         size = size || 18;
         var avatarUrl = _getMyAvatarSetting();
@@ -641,18 +598,15 @@
         }
         return '<span style="display:inline-flex;align-items:center;justify-content:center;width:' + size + 'px;height:' + size + 'px;border-radius:50%;background:rgba(var(--accent-color-rgb),0.12);font-size:' + Math.round(size * 0.6) + 'px;vertical-align:middle;flex-shrink:0;">👤</span>';
     }
-
     // =============================================
     // 封面设置
     // =============================================
     function showCoverSettings() {
         var old = document.getElementById('cover-settings-modal');
         if (old) old.remove();
-
         var wrap = document.createElement('div');
         wrap.id = 'cover-settings-modal';
         wrap.style.cssText = 'position:fixed;inset:0;z-index:10050;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);';
-
         var inner = document.createElement('div');
         inner.style.cssText = 'background:var(--primary-bg);border-radius:20px;padding:24px;width:min(380px, 90vw);border:1px solid var(--border-color);';
         inner.innerHTML = '<div style="display:flex;justify-content:space-between;margin-bottom:14px;">' +
@@ -676,12 +630,10 @@
             '</div>';
         wrap.appendChild(inner);
         document.body.appendChild(wrap);
-
         var close = function() { wrap.remove(); };
         document.getElementById('cover-close').onclick = close;
         document.getElementById('cover-cancel').onclick = close;
         wrap.onclick = function(e) { if (e.target === wrap) close(); };
-
         document.getElementById('cover-url-apply').onclick = function() {
             var url = document.getElementById('cover-url-input').value.trim();
             if (!url) { _notify('请输入图片URL', 'warning'); return; }
@@ -698,7 +650,6 @@
             if (wrap2) wrap2.style.display = 'block';
             _notify('封面已更新 ✨', 'success');
         };
-
         document.getElementById('cover-reset-btn').onclick = function() {
             if (confirm('确定恢复默认封面吗？')) {
                 _clearCoverImage();
@@ -714,31 +665,25 @@
                 _notify('已恢复默认封面', 'info');
             }
         };
-
         var existing = _getCoverImage();
         if (existing) {
             document.getElementById('cover-url-input').value = existing;
         }
     }
-
     // =============================================
     // 头像与昵称管理
     // =============================================
     function showAvatarSettings() {
         var old = document.getElementById('avatar-settings-modal');
         if (old) old.remove();
-
         var wrap = document.createElement('div');
         wrap.id = 'avatar-settings-modal';
         wrap.style.cssText = 'position:fixed;inset:0;z-index:10055;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);';
-
         var inner = document.createElement('div');
         inner.style.cssText = 'background:var(--primary-bg);border-radius:20px;padding:20px;width:min(400px, 92vw);max-height:85vh;overflow-y:auto;border:1px solid var(--border-color);';
-
         var myName = _getMyNameSetting();
         var myAvatar = _getMyAvatarSetting();
         var members = _getGroupMembers();
-
         var memberListHtml = '';
         for (var mi = 0; mi < members.length; mi++) {
             var m = members[mi];
@@ -753,7 +698,6 @@
                 '<button onclick="removeMember(\'' + _esc(m.name) + '\')" style="padding:4px 8px;border:none;background:none;color:#ff6b6b;font-size:13px;cursor:pointer;">✕</button>' +
                 '</div>';
         }
-
         inner.innerHTML =
             '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
                 '<span style="font-size:18px;font-weight:700;">👤 头像与昵称</span>' +
@@ -781,26 +725,20 @@
             '<div style="display:flex;gap:10px;margin-top:4px;">' +
                 '<button id="avatar-close-btn" style="flex:1;padding:10px;border:1px solid var(--border-color);border-radius:12px;background:var(--secondary-bg);color:var(--text-secondary);font-size:13px;cursor:pointer;">关闭</button>' +
             '</div>';
-
         wrap.appendChild(inner);
         document.body.appendChild(wrap);
-
         document.getElementById('avatar-close').onclick = function() { wrap.remove(); };
         document.getElementById('avatar-close-btn').onclick = function() { wrap.remove(); };
         wrap.onclick = function(e) { if (e.target === wrap) wrap.remove(); };
     }
-
     function editMyInfo() {
         var old = document.getElementById('edit-my-modal');
         if (old) old.remove();
-
         var myName = _getMyNameSetting();
         var myAvatar = _getMyAvatarSetting();
-
         var wrap = document.createElement('div');
         wrap.id = 'edit-my-modal';
         wrap.style.cssText = 'position:fixed;inset:0;z-index:10056;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);';
-
         var inner = document.createElement('div');
         inner.style.cssText = 'background:var(--primary-bg);border-radius:20px;padding:24px;width:min(380px, 90vw);border:1px solid var(--border-color);';
         inner.innerHTML =
@@ -825,14 +763,11 @@
                 '<button id="edit-my-cancel" style="flex:1;padding:10px;border:1px solid var(--border-color);border-radius:12px;background:var(--secondary-bg);color:var(--text-secondary);font-size:13px;cursor:pointer;">取消</button>' +
                 '<button id="edit-my-save" style="flex:2;padding:10px;border:none;border-radius:12px;background:var(--accent-color);color:#fff;font-weight:700;font-size:13px;cursor:pointer;">保存</button>' +
             '</div>';
-
         wrap.appendChild(inner);
         document.body.appendChild(wrap);
-
         document.getElementById('edit-my-close').onclick = function() { wrap.remove(); };
         document.getElementById('edit-my-cancel').onclick = function() { wrap.remove(); };
         wrap.onclick = function(e) { if (e.target === wrap) wrap.remove(); };
-
         document.getElementById('edit-my-save').onclick = function() {
             var name = document.getElementById('edit-my-name-input').value.trim();
             if (!name) { _notify('请输入昵称', 'warning'); return; }
@@ -850,22 +785,18 @@
             _notify('信息已更新 ✨', 'success');
         };
     }
-
     function editMember(name) {
         var old = document.getElementById('edit-member-modal');
         if (old) old.remove();
-
         var members = _getGroupMembers();
         var member = null;
         for (var i = 0; i < members.length; i++) {
             if (members[i].name === name) { member = members[i]; break; }
         }
         if (!member) { _notify('成员不存在', 'error'); return; }
-
         var wrap = document.createElement('div');
         wrap.id = 'edit-member-modal';
         wrap.style.cssText = 'position:fixed;inset:0;z-index:10057;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);';
-
         var inner = document.createElement('div');
         inner.style.cssText = 'background:var(--primary-bg);border-radius:20px;padding:24px;width:min(380px, 90vw);border:1px solid var(--border-color);';
         inner.innerHTML =
@@ -890,14 +821,11 @@
                 '<button id="edit-member-cancel" style="flex:1;padding:10px;border:1px solid var(--border-color);border-radius:12px;background:var(--secondary-bg);color:var(--text-secondary);font-size:13px;cursor:pointer;">取消</button>' +
                 '<button id="edit-member-save" style="flex:2;padding:10px;border:none;border-radius:12px;background:var(--accent-color);color:#fff;font-weight:700;font-size:13px;cursor:pointer;">保存</button>' +
             '</div>';
-
         wrap.appendChild(inner);
         document.body.appendChild(wrap);
-
         document.getElementById('edit-member-close').onclick = function() { wrap.remove(); };
         document.getElementById('edit-member-cancel').onclick = function() { wrap.remove(); };
         wrap.onclick = function(e) { if (e.target === wrap) wrap.remove(); };
-
         document.getElementById('edit-member-save').onclick = function() {
             var newName = document.getElementById('edit-member-name-input').value.trim();
             if (!newName) { _notify('请输入昵称', 'warning'); return; }
@@ -927,15 +855,12 @@
             _notify('成员已更新 ✨', 'success');
         };
     }
-
     function addMember() {
         var old = document.getElementById('add-member-modal');
         if (old) old.remove();
-
         var wrap = document.createElement('div');
         wrap.id = 'add-member-modal';
         wrap.style.cssText = 'position:fixed;inset:0;z-index:10058;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);';
-
         var inner = document.createElement('div');
         inner.style.cssText = 'background:var(--primary-bg);border-radius:20px;padding:24px;width:min(380px, 90vw);border:1px solid var(--border-color);';
         inner.innerHTML =
@@ -960,14 +885,11 @@
                 '<button id="add-member-cancel" style="flex:1;padding:10px;border:1px solid var(--border-color);border-radius:12px;background:var(--secondary-bg);color:var(--text-secondary);font-size:13px;cursor:pointer;">取消</button>' +
                 '<button id="add-member-save" style="flex:2;padding:10px;border:none;border-radius:12px;background:var(--accent-color);color:#fff;font-weight:700;font-size:13px;cursor:pointer;">保存</button>' +
             '</div>';
-
         wrap.appendChild(inner);
         document.body.appendChild(wrap);
-
         document.getElementById('add-member-close').onclick = function() { wrap.remove(); };
         document.getElementById('add-member-cancel').onclick = function() { wrap.remove(); };
         wrap.onclick = function(e) { if (e.target === wrap) wrap.remove(); };
-
         document.getElementById('add-member-save').onclick = function() {
             var name = document.getElementById('add-member-name-input').value.trim();
             if (!name) { _notify('请输入成员名字', 'warning'); return; }
@@ -990,7 +912,6 @@
             _notify('成员已添加 ✨', 'success');
         };
     }
-
     function removeMember(name) {
         if (!confirm('确定要删除成员 "' + name + '" 吗？\n该成员的所有动态也将被删除。')) return;
         _removeGroupMember(name);
@@ -1002,21 +923,18 @@
         if (container && activeTab) renderTab(activeTab.dataset.tab, container);
         _notify('成员已删除', 'info');
     }
-
     // =============================================
     // 回复弹窗
     // =============================================
     function showReplyModal(postId, commentId) {
         var old = document.getElementById('reply-modal');
         if (old) old.remove();
-
         var data = _getData();
         var post = data.posts.find(function(p) { return p.id === postId; });
         var targetComment = null;
         if (post) {
             targetComment = post.comments.find(function(c) { return c.id === commentId; });
         }
-
         var wrap = document.createElement('div');
         wrap.id = 'reply-modal';
         wrap.style.cssText = 'position:fixed;inset:0;z-index:10035;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);';
@@ -1034,24 +952,19 @@
             '</div>';
         wrap.appendChild(inner);
         document.body.appendChild(wrap);
-
         var close = function() { wrap.remove(); };
         document.getElementById('reply-close').onclick = close;
         document.getElementById('reply-cancel').onclick = close;
         wrap.onclick = function(e) { if (e.target === wrap) close(); };
-
         document.getElementById('reply-submit').onclick = function() {
             var text = document.getElementById('reply-text').value.trim();
             if (!text) { _notify('请输入回复内容', 'warning'); return; }
-
             _appendCommentThread(postId, commentId, 'me', text, '');
-
             close();
             var container = document.getElementById('moments-content');
             var activeTab = document.querySelector('.moments-tab.active');
             if (container && activeTab) renderTab(activeTab.dataset.tab, container);
             _notify('回复已发送', 'success');
-
             if (targetComment && targetComment.author === 'partner' && post && post.author === 'me') {
                 var replierName = targetComment.memberName || '群成员';
                 var delayMs = REPLY_DELAY_MIN + Math.random() * (REPLY_DELAY_MAX - REPLY_DELAY_MIN);
@@ -1073,7 +986,6 @@
             }
         };
     }
-
     // =============================================
     // 渲染Tab内容
     // =============================================
@@ -1091,13 +1003,11 @@
                 '</div>';
             return;
         }
-
         var html = '';
         for (var pi = 0; pi < filtered.length; pi++) {
             var post = filtered[pi];
             var isMe = post.author === 'me';
             var name, avatarHtml;
-
             if (isMe) {
                 name = _getMyNameSetting();
                 var myAvatar = _getMyAvatarSetting();
@@ -1118,7 +1028,6 @@
             }
             var time = formatTime(post.timestamp);
             var commentCount = post.comments.length;
-
             html += '<div class="moments-post" data-id="' + post.id + '" style="background:rgba(var(--secondary-bg-rgb,255,255,255),0.85);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:16px;padding:16px 16px 12px;margin-bottom:14px;border:1px solid rgba(var(--border-color-rgb,0,0,0),0.06);box-shadow:0 1px 4px rgba(0,0,0,0.04);">' +
                 '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">' +
                     '<span style="font-size:20px;display:flex;align-items:center;justify-content:center;width:36px;height:36px;flex-shrink:0;">' + avatarHtml + '</span>' +
@@ -1136,7 +1045,6 @@
                     (isMe ? '<button class="moments-delete-btn" data-id="' + post.id + '" style="background:none;border:none;color:#ff6b6b;font-size:13px;cursor:pointer;padding:4px 8px;border-radius:12px;margin-left:auto;">🗑️</button>' : '') +
                 '</div>' +
                 (post.comments.length > 0 ? '<div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(var(--border-color-rgb,0,0,0),0.06);">' : '');
-
             for (var ci = 0; ci < post.comments.length; ci++) {
                 var c = post.comments[ci];
                 var cName, cAvatarHtml;
@@ -1148,7 +1056,6 @@
                     cAvatarHtml = _avatarHtmlForMember(cName, 18);
                 }
                 var cTime = formatTime(c.timestamp);
-
                 html += '<div style="margin-bottom:8px;padding:4px 0;">' +
                     '<div style="display:flex;align-items:flex-start;gap:6px;flex-wrap:wrap;">' +
                         cAvatarHtml +
@@ -1157,7 +1064,6 @@
                         '<span style="font-size:10px;color:var(--text-secondary);">' + cTime + '</span>' +
                         '<button class="moments-reply-to-comment" data-postid="' + post.id + '" data-commentid="' + c.id + '" style="background:none;border:none;color:var(--accent-color);font-size:11px;cursor:pointer;padding:0 4px;opacity:0.6;">回复</button>' +
                     '</div>';
-
                 var thread = c.thread || [];
                 for (var ti = 0; ti < thread.length; ti++) {
                     var t = thread[ti];
@@ -1180,15 +1086,12 @@
                 }
                 html += '</div>';
             }
-
             if (post.comments.length > 0) {
                 html += '</div>';
             }
             html += '</div>';
         }
-
         container.innerHTML = html;
-
         var likeBtns = container.querySelectorAll('.moments-like-btn');
         for (var lb = 0; lb < likeBtns.length; lb++) {
             (function(btn) {
@@ -1201,7 +1104,6 @@
                 });
             })(likeBtns[lb]);
         }
-
         var commentBtns = container.querySelectorAll('.moments-comment-btn');
         for (var cb = 0; cb < commentBtns.length; cb++) {
             (function(btn) {
@@ -1212,7 +1114,6 @@
                 });
             })(commentBtns[cb]);
         }
-
         var replyBtns = container.querySelectorAll('.moments-reply-to-comment');
         for (var rb = 0; rb < replyBtns.length; rb++) {
             (function(btn) {
@@ -1224,7 +1125,6 @@
                 });
             })(replyBtns[rb]);
         }
-
         var deleteBtns = container.querySelectorAll('.moments-delete-btn');
         for (var db = 0; db < deleteBtns.length; db++) {
             (function(btn) {
@@ -1241,11 +1141,9 @@
             })(deleteBtns[db]);
         }
     }
-
     function showPublishModal() {
         var old = document.getElementById('publish-modal');
         if (old) old.remove();
-
         var wrap = document.createElement('div');
         wrap.id = 'publish-modal';
         wrap.style.cssText = 'position:fixed;inset:0;z-index:10020;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);';
@@ -1262,12 +1160,10 @@
             '</div>';
         wrap.appendChild(inner);
         document.body.appendChild(wrap);
-
         var close = function() { wrap.remove(); };
         document.getElementById('publish-close').onclick = close;
         document.getElementById('publish-cancel').onclick = close;
         wrap.onclick = function(e) { if (e.target === wrap) close(); };
-
         document.getElementById('publish-submit').onclick = function() {
             var text = document.getElementById('publish-text').value.trim();
             if (!text) { _notify('请输入内容', 'warning'); return; }
@@ -1280,11 +1176,9 @@
             _scheduleAutoInteraction(newPost.id);
         };
     }
-
     function showCommentModal(postId) {
         var old = document.getElementById('comment-modal');
         if (old) old.remove();
-
         var wrap = document.createElement('div');
         wrap.id = 'comment-modal';
         wrap.style.cssText = 'position:fixed;inset:0;z-index:10030;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);';
@@ -1301,32 +1195,26 @@
             '</div>';
         wrap.appendChild(inner);
         document.body.appendChild(wrap);
-
         var close = function() { wrap.remove(); };
         document.getElementById('comment-close').onclick = close;
         document.getElementById('comment-cancel').onclick = close;
         wrap.onclick = function(e) { if (e.target === wrap) close(); };
-
         document.getElementById('comment-submit').onclick = function() {
             var text = document.getElementById('comment-text').value.trim();
             if (!text) { _notify('请输入评论', 'warning'); return; }
-
             var posts = _getPosts();
             var post = null;
             for (var i = 0; i < posts.length; i++) {
                 if (posts[i].id === postId) { post = posts[i]; break; }
             }
             if (!post) { _notify('帖子不存在', 'error'); return; }
-
             var comment = _addComment(postId, 'me', text);
             if (!comment) { _notify('评论失败', 'error'); return; }
-
             close();
             var container = document.getElementById('moments-content');
             var activeTab = document.querySelector('.moments-tab.active');
             if (container && activeTab) renderTab(activeTab.dataset.tab, container);
             _notify('评论已发送', 'success');
-
             if (post.author === 'partner') {
                 var delay = Math.random() * 300000;
                 setTimeout(function() {
@@ -1350,47 +1238,36 @@
             }
         };
     }
-
     // =============================================
     // 朋友圈主界面
     // =============================================
     window.openMoments = function() {
         _forceGeneratePartnerPosts();
-
         var old = document.getElementById('moments-modal');
         if (old) old.remove();
-
         var wrap = document.createElement('div');
         wrap.id = 'moments-modal';
         wrap.style.cssText = 'position:fixed;inset:0;z-index:10010;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.7);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);';
-
         var inner = document.createElement('div');
         inner.style.cssText = 'background:var(--primary-bg);border-radius:20px;padding:0;width:min(460px, 94vw);max-height:85vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.3);border:1px solid var(--border-color);';
-
         var coverUrl = _getCoverImage();
         var defaultCover = 'linear-gradient(135deg, #2d1b3d 0%, #1a1a2e 50%, #16213e 100%)';
         var coverStyle = coverUrl ? 'url(' + coverUrl + ')' : defaultCover;
-
         var coverSection = document.createElement('div');
         coverSection.id = 'moments-cover';
         coverSection.style.cssText = 'position:relative;width:100%;height:160px;background:' + coverStyle + ';background-size:cover;background-position:center;flex-shrink:0;cursor:pointer;transition:background 0.3s ease;';
-
         var coverText = document.createElement('div');
         coverText.style.cssText = 'position:absolute;bottom:16px;left:18px;right:18px;color:rgba(255,255,255,0.95);text-shadow:0 2px 16px rgba(0,0,0,0.4);';
         coverText.innerHTML =
             '<div style="font-size:17px;font-weight:300;letter-spacing:2px;font-style:italic;line-height:1.5;">誓言是一场有时差的雨。</div>' +
             '<div style="font-size:11px;opacity:0.6;margin-top:2px;letter-spacing:1.5px;font-weight:300;">— Vow is a rain with time difference.</div>';
         coverSection.appendChild(coverText);
-
         coverSection.addEventListener('click', function() {
             showCoverSettings();
         });
-
         inner.appendChild(coverSection);
-
         var header = document.createElement('div');
         header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:14px 18px 10px;border-bottom:1px solid var(--border-color);flex-shrink:0;background:var(--primary-bg);';
-
         var leftSection = document.createElement('div');
         leftSection.style.cssText = 'display:flex;align-items:center;gap:8px;';
         var backBtn = document.createElement('button');
@@ -1398,16 +1275,13 @@
         backBtn.innerHTML = '<i class="fas fa-arrow-left"></i>';
         backBtn.onclick = function() { wrap.remove(); };
         leftSection.appendChild(backBtn);
-
         var titleSpan = document.createElement('span');
         titleSpan.style.cssText = 'font-size:17px;font-weight:700;color:var(--text-primary);';
         titleSpan.textContent = '📱 朋友圈';
         leftSection.appendChild(titleSpan);
         header.appendChild(leftSection);
-
         var rightSection = document.createElement('div');
         rightSection.style.cssText = 'display:flex;gap:6px;align-items:center;';
-
         var avatarBtn = document.createElement('button');
         avatarBtn.style.cssText = 'background:none;border:none;font-size:16px;color:var(--text-secondary);cursor:pointer;padding:4px 6px;border-radius:8px;';
         avatarBtn.innerHTML = '<i class="fas fa-user-circle"></i>';
@@ -1417,7 +1291,6 @@
             showAvatarSettings();
         };
         rightSection.appendChild(avatarBtn);
-
         var bgBtn = document.createElement('button');
         bgBtn.style.cssText = 'background:none;border:none;font-size:14px;color:var(--text-secondary);cursor:pointer;padding:4px 6px;border-radius:8px;';
         bgBtn.innerHTML = '<i class="fas fa-image"></i>';
@@ -1429,20 +1302,16 @@
         rightSection.appendChild(bgBtn);
         header.appendChild(rightSection);
         inner.appendChild(header);
-
         var tabBar = document.createElement('div');
         tabBar.style.cssText = 'display:flex;border-bottom:1px solid rgba(var(--border-color-rgb,0,0,0),0.08);flex-shrink:0;background:var(--primary-bg);padding:0 16px;';
         tabBar.innerHTML = '<button class="moments-tab active" data-tab="me" style="flex:1;padding:12px 4px 10px;border:none;background:transparent;font-weight:600;color:var(--text-primary);cursor:pointer;font-family:var(--font-family);font-size:14px;position:relative;border-bottom:2px solid var(--accent-color);">我的</button>' +
             '<button class="moments-tab" data-tab="partner" style="flex:1;padding:12px 4px 10px;border:none;background:transparent;font-weight:400;color:var(--text-secondary);cursor:pointer;font-family:var(--font-family);font-size:14px;position:relative;border-bottom:2px solid transparent;">群成员</button>';
         inner.appendChild(tabBar);
-
         var contentContainer = document.createElement('div');
         contentContainer.id = 'moments-content';
         contentContainer.style.cssText = 'flex:1;overflow-y:auto;padding:12px 16px 16px;background:var(--secondary-bg);';
-
         renderTab('me', contentContainer);
         inner.appendChild(contentContainer);
-
         var footer = document.createElement('div');
         footer.style.cssText = 'display:flex;justify-content:flex-end;padding:10px 16px 14px;border-top:1px solid var(--border-color);flex-shrink:0;background:rgba(var(--primary-bg-rgb),0.95);backdrop-filter:blur(8px);';
         var addBtn = document.createElement('button');
@@ -1453,10 +1322,8 @@
         addBtn.onclick = function() { showPublishModal(); };
         footer.appendChild(addBtn);
         inner.appendChild(footer);
-
         wrap.appendChild(inner);
         document.body.appendChild(wrap);
-
         tabBar.querySelectorAll('.moments-tab').forEach(function(btn) {
             btn.addEventListener('click', function() {
                 tabBar.querySelectorAll('.moments-tab').forEach(function(b) {
@@ -1476,12 +1343,10 @@
             });
         });
     };
-
     window.showAvatarSettings = showAvatarSettings;
     window.editMyInfo = editMyInfo;
     window.editMember = editMember;
     window.addMember = addMember;
     window.removeMember = removeMember;
-
-    console.log('[朋友圈] 模块已加载（每日随机2~4条 · 成员随机 · 对话链评论 · 头像跟随自定义 · 多角色隔离版）');
+    console.log('[朋友圈] 模块已加载（每日随机2~4条 · 时间均匀散布 · 历史保留不清空 · 对话链评论 · 头像跟随自定义 · 多角色隔离版）');
 })();
