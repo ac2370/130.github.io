@@ -1163,7 +1163,7 @@ const loadData = async () => {
 
             applyAllAvatarFrames();
 
-            manageAutoSendTimer();
+            _restoreAllAutoSendTimers();
 
             checkEnvelopeStatus();
 
@@ -1761,7 +1761,7 @@ function initializeRandomUI() {
 
             scrambleText(subEl, line2, 2000);
 
-           }, 600);
+        }, 600);
 
     } else {
 
@@ -1807,13 +1807,24 @@ function initializeRandomUI() {
 
 }
 
+// 【新增】每个角色独立的"主动发消息"定时器池
+// 切换角色后，旧角色已启动的定时器不会被清除，仍按自己的间隔继续主动发消息；
+// 定时触发时通过角色锁 simulateReply(roleId) 把消息写入该角色自己的存储（不串框）
+window._autoSendTimers = window._autoSendTimers || {};
+
 function manageAutoSendTimer() {
 
-    if (autoSendTimer) {
+    if (!window._autoSendTimers) window._autoSendTimers = {};
 
-        clearInterval(autoSendTimer);
+    const roleId = _currentContactId();
 
-        autoSendTimer = null;
+    // 只管理"当前角色"的定时器：先按最新设置重启它；
+    // 其他角色已启动的定时器一律不清除，让它们在后台继续
+    if (window._autoSendTimers[roleId]) {
+
+        clearInterval(window._autoSendTimers[roleId]);
+
+        window._autoSendTimers[roleId] = null;
 
     }
 
@@ -1821,15 +1832,83 @@ function manageAutoSendTimer() {
 
         const intervalMs = settings.autoSendInterval * 60 * 1000;
 
-        autoSendTimer = setInterval(() => {
+        const timer = setInterval(() => {
 
             if (!document.body.classList.contains('batch-favorite-mode')) {
 
-                simulateReply();
+                // 绑定角色锁：即使切到别的角色，这条主动消息仍发给 roleId，
+                // 由 addMessage 按 contactId 写入该角色专属存储，切换回来即可看到
+                simulateReply(roleId);
 
             }
 
         }, intervalMs);
+
+        window._autoSendTimers[roleId] = timer;
+
+        // 兼容旧代码对全局 autoSendTimer 的引用（镜像指向当前角色的定时器）
+        autoSendTimer = timer;
+
+    } else {
+
+        autoSendTimer = null;
+
+    }
+
+}
+
+// 【新增】刷新/初始化后：除当前角色外，遍历 sessionList 中所有角色，
+// 读取各自 chatSettings，把开启了"主动发消息"的角色的定时器逐个恢复启动。
+// 效果：刷新页面后，所有开启过"主动发消息给我"的角色都会自动恢复各自的定时发送
+// （各角色按自己的间隔后台发消息、写入各自存储，切换回来即可看到）
+async function _restoreAllAutoSendTimers() {
+
+    manageAutoSendTimer(); // 当前角色按原逻辑管理（重启/停止）
+
+    if (!window._autoSendTimers) window._autoSendTimers = {};
+
+    const currentRole = _currentContactId();
+
+    const list = (typeof sessionList !== 'undefined' && Array.isArray(sessionList)) ? sessionList : [];
+
+    for (const s of list) {
+
+        const roleId = s && s.id;
+
+        if (!roleId || roleId === currentRole) continue;
+
+        // 已有定时器的角色（切换过程中仍存活）直接跳过，避免重复启动
+        if (window._autoSendTimers[roleId]) continue;
+
+        try {
+
+            const cs = await localforage.getItem(`${APP_PREFIX}${roleId}_chatSettings`);
+
+            if (cs && cs.autoSendEnabled) {
+
+                const intervalMs = (cs.autoSendInterval || 5) * 60 * 1000;
+
+                const timer = setInterval(() => {
+
+                    if (!document.body.classList.contains('batch-favorite-mode')) {
+
+                        simulateReply(roleId);
+
+                    }
+
+                }, intervalMs);
+
+                window._autoSendTimers[roleId] = timer;
+
+                console.log('[auto-send] 已为角色恢复主动发消息定时器:', roleId);
+
+            }
+
+        } catch (e) {
+
+            console.warn('[auto-send] 恢复角色定时器失败:', roleId, e);
+
+        }
 
     }
 
@@ -3525,7 +3604,7 @@ function positionTypingIndicator() {
 
     var tiW = document.getElementById('typing-indicator-wrapper');
 
- var inputArea = document.querySelector('.input-area-wrapper');
+    var inputArea = document.querySelector('.input-area-wrapper');
 
     if (!tiW || !inputArea) return;
 
@@ -5006,7 +5085,7 @@ function importChatHistory(file) {
 
                     }
 
-                      if (importedData.dgCustomData) { try { localStorage.setItem('dg_custom_data', JSON.stringify(importedData.dgCustomData)); } catch(e2) {} }
+                    if (importedData.dgCustomData) { try { localStorage.setItem('dg_custom_data', JSON.stringify(importedData.dgCustomData)); } catch(e2) {} }
 
                     if (importedData.dgStatusPool) { try { localStorage.setItem('dg_status_pool', JSON.stringify(importedData.dgStatusPool)); } catch(e2) {} }
 
@@ -5278,7 +5357,7 @@ window.initializeSession = async function() {
 
     }
 
-    // 【修复】同步所有角色标识，保证角色锁判断（_currentContactId）永远取到最新值
+     // 【修复】同步所有角色标识，保证角色锁判断（_currentContactId）永远取到最新值
     window.SESSION_ID = SESSION_ID;
 
     window.currentContactId = SESSION_ID;
@@ -5408,3 +5487,365 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e)
     throttledSaveData();
 
 });
+
+// ============================================================
+
+// 【修复 v4.1】数据管理 - 全量备份（覆盖 utils.js 同名函数）
+
+// 问题：原 exportAllData 直接用 downloadFileFallback 下载单文件大 JSON，
+//       在手机浏览器 / App 内嵌浏览器里 blob 下载经常被拦截（尤其 iOS Safari 和
+//       微信等 WebView），导致“全量备份点击没有反应 / 不能备份”。
+// 修复：改为调用 backup-engine 的 ChatBackup.exportBackupToFile ——
+//       移动端优先走系统分享面板（可“存储到文件”），桌面端导出 ZIP（媒体分离、
+//       体积更小、导入更不易失败）；share 或下载失败时自动兜底。
+
+async function exportAllData() {
+
+    try {
+
+        if (typeof ChatBackup !== 'undefined' && ChatBackup.exportBackupToFile) {
+
+            await ChatBackup.exportBackupToFile({
+
+                inclMsgs: true,
+
+                inclSet: true,
+
+                inclCustom: true,
+
+                inclAnn: true,
+
+                inclThemes: true,
+
+                inclDg: true,
+
+                inclStickers: true
+
+            });
+
+        } else if (typeof ChatBackup !== 'undefined' && ChatBackup.buildBackupPayload && ChatBackup.serializeBackupV4) {
+
+            // 兜底：老接口直接导出 JSON
+            const payload = await ChatBackup.buildBackupPayload({
+
+                inclMsgs: true, inclSet: true, inclCustom: true,
+
+                inclAnn: true, inclThemes: true, inclDg: true, inclStickers: true
+
+            });
+
+            const jsonString = ChatBackup.serializeBackupV4(payload);
+
+            const dateStr = new Date().toISOString().slice(0, 10);
+
+            const fileName = `chatapp-backup-${dateStr}.json`;
+
+            const blob = new Blob([jsonString], { type: 'application/json;charset=utf-8' });
+
+            if (navigator.share && /Mobile|Android|iPhone|iPad/.test(navigator.userAgent)) {
+
+                try {
+
+                    const f = new File([blob], fileName, { type: 'application/json' });
+
+                    if (navigator.canShare && navigator.canShare({ files: [f] })) {
+
+                        await navigator.share({ files: [f], title: '传讯全量备份', text: '备份日期：' + new Date().toLocaleDateString() });
+
+                        if (typeof showNotification === 'function') showNotification('备份导出成功', 'success');
+
+                        return;
+
+                    }
+
+                } catch (e) { /* 继续走下载兜底 */ }
+
+            }
+
+            downloadFileFallback(blob, fileName);
+
+            if (typeof showNotification === 'function') showNotification('已导出 JSON 备份', 'success');
+
+        } else {
+
+            if (typeof showNotification === 'function') showNotification('备份模块未加载，请刷新页面', 'error');
+
+        }
+
+    } catch (e) {
+
+        console.error('全量导出失败:', e);
+
+        if (typeof showNotification === 'function') showNotification('全量导出失败，请重试', 'error');
+
+    }
+
+}
+
+// ============================================================
+
+// 【修复 v4.1】数据管理 - 全量恢复（覆盖 utils.js 同名函数）
+
+// 问题：原 importAllData 解析完备份后调用 confirm()，在部分 App 内嵌浏览器 /
+//       WebView 中 confirm 会被拦截直接返回 false，导致“点击恢复数据后没有响应”。
+// 修复：去掉 confirm，解析成功后直接弹出类别选择面板（可取消），选定即恢复。
+
+async function importAllData(file) {
+
+    if (!file) return;
+
+    if (file.size > 220 * 1024 * 1024) {
+
+        showNotification('文件过大（>220MB），请确认是否为正确备份', 'error');
+
+        return;
+
+    }
+
+    try {
+
+        if (typeof ChatBackup === 'undefined' || !ChatBackup.loadBackupFromFile || !ChatBackup.applyBackupToStorage) {
+
+            showNotification('备份模块未加载，请刷新页面重试', 'error');
+
+            return;
+
+        }
+
+        const data = await ChatBackup.loadBackupFromFile(file);
+
+        const fullLike = ChatBackup.isFullBackupShape
+
+            ? ChatBackup.isFullBackupShape(data)
+
+            : (
+
+                data.type === 'full' ||
+
+                (typeof data.type === 'string' && data.type.includes('full-backup')) ||
+
+                !!data.indexedDB ||
+
+                !!data.localforage
+
+            );
+
+        if (!fullLike) {
+
+            if (typeof importChatHistory === 'function') importChatHistory(file);
+
+            return;
+
+        }
+
+        const categories = [
+
+            {
+
+                id: 'chat',
+
+                label: '聊天记录 / 会话 / 红包',
+
+                indexedDBNeedles: ['chatMessages', 'sessionList', 'chatSettings', 'showPartnerNameInChat', 'envelopeData', 'pending_envelope'],
+
+                localStorageNeedles: ['groupChatSettings']
+
+            },
+
+            {
+
+                id: 'replies',
+
+                label: '回复 / 拍一拍 / 氛围',
+
+                indexedDBNeedles: ['customReplies', 'customPokes', 'customStatuses', 'customMottos', 'customIntros', 'customEmojis', 'customReplyGroups', 'customPokeGroups', 'customStatusGroups'],
+
+                localStorageNeedles: ['disabledReplyItems', 'pokeSym_my', 'pokeSym_partner', 'pokeSym_my_custom', 'pokeSym_partner_custom']
+
+            },
+
+            {
+
+                id: 'stickers',
+
+                label: '表情库（贴纸）',
+
+                indexedDBNeedles: ['stickerLibrary', 'myStickerLibrary'],
+
+                localStorageNeedles: ['disabledStickerItems']
+
+            },
+
+            {
+
+                id: 'ann',
+
+                label: '纪念日',
+
+                indexedDBNeedles: ['anniversaries'],
+
+                localStorageNeedles: []
+
+            },
+
+            {
+
+                id: 'mood',
+
+                label: '心晴手账',
+
+                indexedDBNeedles: ['moodCalendar', 'customMoodOptions', 'moodTrash'],
+
+                localStorageNeedles: []
+
+            },
+
+            {
+
+                id: 'themes',
+
+                label: '主题 / 外观 / 图库',
+
+                indexedDBNeedles: ['customThemes', 'themeSchemes', 'backgroundGallery', 'chatBackground', 'partnerAvatar', 'myAvatar', 'partnerPersonas'],
+
+                localStorageNeedles: []
+
+            },
+
+            {
+
+                id: 'dg',
+
+                label: '每日公告 / 运势 / 天气',
+
+                indexedDBNeedles: [],
+
+                localStorageNeedles: ['dg_custom_data', 'dg_status_pool', 'weekly_fortune', 'daily_fortune'],
+
+                localStoragePrefixes: ['customWeather_']
+
+            }
+
+        ];
+
+        const pickSelected = () => new Promise((resolve) => {
+
+            const overlay = document.createElement('div');
+
+            overlay.style.cssText = `
+
+                position:fixed;inset:0;z-index:999999;background:rgba(0,0,0,0.6);
+
+                backdrop-filter:blur(10px);display:flex;align-items:flex-end;justify-content:center;
+
+            `;
+
+            overlay.innerHTML = `
+
+                <div style="
+
+                    width:100%;max-width:560px;background:var(--secondary-bg);border-radius:24px 24px 0 0;
+
+                    box-shadow:0 -10px 60px rgba(0,0,0,0.3);
+
+                    padding:16px 18px env(safe-area-inset-bottom,0);
+
+                ">
+
+                    <div style="width:36px;height:4px;border-radius:2px;background:var(--border-color);margin:0 auto 14px;"></div>
+
+                    <div style="font-size:16px;font-weight:800;color:var(--text-primary);margin-bottom:10px;">全量恢复：选择要导入的部分</div>
+
+                    <div style="display:flex;flex-direction:column;gap:10px;max-height:60vh;overflow:auto;padding-right:6px;">
+
+                        ${categories.map(c => {
+
+                            return `
+
+                                <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 12px;border:1.5px solid var(--border-color);border-radius:16px;background:var(--primary-bg);">
+
+                                    <span style="font-size:13px;font-weight:700;color:var(--text-primary);">${c.label}</span>
+
+                                    <input type="checkbox" data-cat="${c.id}" checked style="transform:scale(1.1);accent-color:var(--accent-color);">
+
+                                </label>
+
+                            `;
+
+                        }).join('')}
+
+                    </div>
+
+                    <div style="display:flex;gap:10px;margin-top:14px;">
+
+                        <button id="full-imp-cancel" class="modal-btn modal-btn-secondary" style="flex:1;padding:12px 0;">取消</button>
+
+                        <button id="full-imp-confirm" class="modal-btn modal-btn-primary" style="flex:1;padding:12px 0;">确认恢复</button>
+
+                    </div>
+
+                </div>
+
+            `;
+
+            document.body.appendChild(overlay);
+
+            overlay.addEventListener('click', (ev) => { if (ev.target === overlay) { overlay.remove(); resolve(null); } });
+
+            const fullImpCancelBtn = document.getElementById('full-imp-cancel');
+
+            const fullImpConfirmBtn = document.getElementById('full-imp-confirm');
+
+            if (fullImpCancelBtn) fullImpCancelBtn.onclick = () => { overlay.remove(); resolve(null); };
+
+            if (fullImpConfirmBtn) fullImpConfirmBtn.onclick = () => {
+
+                const selected = Array.from(overlay.querySelectorAll('input[type=checkbox]:checked'))
+
+                    .map(i => i.dataset.cat);
+
+                overlay.remove();
+
+                resolve(selected);
+
+            };
+
+        });
+
+        const selectedCats = await pickSelected();
+
+        if (!selectedCats || selectedCats.length === 0) {
+
+            showNotification('已取消恢复', 'info', 1500);
+
+            return;
+
+        }
+
+        showNotification('正在恢复数据…', 'info', 3000);
+
+        await ChatBackup.applyBackupToStorage(data, {
+
+            selective: true,
+
+            selectedCategoryIds: selectedCats,
+
+            categories
+
+        });
+
+        showNotification('恢复完成，即将刷新页面…', 'success', 2000);
+
+        setTimeout(() => location.reload(), 2200);
+
+    } catch (err) {
+
+        console.error('全量导入失败:', err);
+
+        const msg = err && err.message ? err.message : '未知错误';
+
+        showNotification('导入失败：' + msg, 'error', 5000);
+
+    }
+
+}
