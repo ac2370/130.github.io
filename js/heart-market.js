@@ -1148,3 +1148,9 @@
 
     console.log('[心意集市] 模块已加载（内置心意柜 · 送礼走聊天 · 多角色隔离 · 对方主动送礼）');
 })();
+
+window.initHeartMarket = function() {
+    // 心意集市的数据都是即时从 localStorage 读的，无需主动加载
+    // 切换角色后可以清空一次界面缓存（如果有的话）
+    console.log('[心意集市] 已按角色切换，当前 SESSION_ID =', window.SESSION_ID);
+};
