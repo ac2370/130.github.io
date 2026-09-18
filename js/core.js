@@ -1561,8 +1561,10 @@ const addMessage = (message, opts) => {
 
     // contactId 缺失时，按优先级取：opts.originRole > window._lockRole > window.SESSION_ID
     if (!message.contactId) {
-        message.contactId = opts.originRole || window._lockRole || window.SESSION_ID;
-    }
+    // 【修复】只允许 opts.originRole 作为显式覆盖，绝不使用 _lockRole
+    // 避免用户自己发的消息被误判到旧角色
+    message.contactId = opts.originRole || window.SESSION_ID;
+}
 
     const isCurrentContact = (message.contactId === window.SESSION_ID);
 
@@ -2108,7 +2110,7 @@ window._triggerDelayedReply = function(isUserMessage) {
 // ============================================================
 window.simulateReply = function(originContactId, originSettings) {
     // 无参调用时，优先用 _lockRole，再 fallback SESSION_ID
-    if (!originContactId) originContactId = window._lockRole || window.SESSION_ID;
+    if (!originContactId) originContactId = window.SESSION_ID;
     if (!originSettings) originSettings = Object.assign({}, settings);
 
     const isSameContact = (originContactId === window.SESSION_ID);
