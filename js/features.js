@@ -450,6 +450,12 @@ function showEmojiTab() {
                 updateBatchPreview();
                 showNotification('已添加到批量发送', 'success', 1200);
             } else {
+                // ============================================================
+                // 【修复 1】锁定发起时的角色 + 设置快照
+                // ============================================================
+                const _originRole = window.SESSION_ID;
+                const _originSettings = Object.assign({}, settings);
+
                 addMessage({
                     id: Date.now(),
                     sender: 'user',
@@ -457,14 +463,16 @@ function showEmojiTab() {
                     timestamp: new Date(),
                     image: src,
                     status: 'sent',
-                    type: 'normal'
+                    type: 'normal',
+                    contactId: _originRole
                 });
                 playSound('send');
                 
-                const delayRange = settings.replyDelayMax - settings.replyDelayMin;
-                const randomDelay = settings.replyDelayMin + Math.random() * delayRange;
-                if (window._pendingReplyTimer) clearTimeout(window._pendingReplyTimer);
-                window._pendingReplyTimer = setTimeout(() => { window._pendingReplyTimer = null; simulateReply(); }, randomDelay);
+                const delayRange = _originSettings.replyDelayMax - _originSettings.replyDelayMin;
+                const randomDelay = _originSettings.replyDelayMin + Math.random() * delayRange;
+                setTimeout(() => {
+                    window.simulateReply(_originRole, _originSettings);
+                }, randomDelay);
             }
             document.getElementById('user-sticker-picker').classList.remove('active');
         };
@@ -511,16 +519,25 @@ function showPokeTab() {
             btn.style.transform = '';
         });
         btn.onclick = () => {
+            // ============================================================
+            // 【修复 2】锁定发起时的角色 + 设置快照
+            // ============================================================
+            const _originRole = window.SESSION_ID;
+            const _originSettings = Object.assign({}, settings);
+
             addMessage({
                 id: Date.now(), 
                 text: _formatPokeText(`${settings.myName} ${cleanPokeText}`), 
                 timestamp: new Date(), 
-                type: 'system'
+                type: 'system',
+                contactId: _originRole
             });
             document.getElementById('user-sticker-picker').classList.remove('active');
-            const delayRange = settings.replyDelayMax - settings.replyDelayMin;
-            const randomDelay = settings.replyDelayMin + Math.random() * delayRange;
-            setTimeout(simulateReply, randomDelay);
+            const delayRange = _originSettings.replyDelayMax - _originSettings.replyDelayMin;
+            const randomDelay = _originSettings.replyDelayMin + Math.random() * delayRange;
+            setTimeout(() => {
+                window.simulateReply(_originRole, _originSettings);
+            }, randomDelay);
         };
         area.appendChild(btn);
     });
@@ -720,6 +737,11 @@ function showPokeTab() {
                 sendBtn.addEventListener('click',
                     () => {
                         if (currentImageData) {
+                            // ============================================================
+                            // 【修复 3】锁定发起时的角色 + 设置快照
+                            // ============================================================
+                            const _originRole = window.SESSION_ID;
+                            const _originSettings = Object.assign({}, settings);
 
                             addMessage({
                                 id: Date.now(),
@@ -731,14 +753,17 @@ function showPokeTab() {
                                 favorited: false,
                                 note: null,
                                 replyTo: currentReplyTo,
-                                type: 'normal'
+                                type: 'normal',
+                                contactId: _originRole
                             });
                             playSound('send');
                             currentReplyTo = null;
                             updateReplyPreview();
-                            const delayRange = settings.replyDelayMax - settings.replyDelayMin;
-                            const randomDelay = settings.replyDelayMin + Math.random() * delayRange;
-                            setTimeout(simulateReply, randomDelay);
+                            const delayRange = _originSettings.replyDelayMax - _originSettings.replyDelayMin;
+                            const randomDelay = _originSettings.replyDelayMin + Math.random() * delayRange;
+                            setTimeout(() => {
+                                window.simulateReply(_originRole, _originSettings);
+                            }, randomDelay);
 
 
                             closeModal();
@@ -1612,4 +1637,3 @@ window.tryShowDailyGreeting = function() {
         if (modal) modal.classList.remove('hidden');
     } catch(e) { console.warn('Daily greeting show error:', e); }
 };
-
