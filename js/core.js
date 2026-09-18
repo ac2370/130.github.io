@@ -1,4 +1,78 @@
-/* 核心应用逻辑：数据加载保存、消息渲染、会话管理等 - 已整合多角色切换与高级功能隔离 */
+/* 核心应用逻辑：数据加载保存、消息渲染、会话管理等 - 已整合多角色切换与高级功能隔离 + 回复飘台隔离 */
+
+// ============================================================
+// 【多角色隔离】待处理回复队列 + 未读提示
+// 每个角色独立存储未完成的延迟回复，切换时不会串台
+// ============================================================
+window._pendingReplyQueue = window._pendingReplyQueue || {};   // { roleId: [ { timer, runAt, fn } ] }
+window._typingQueue        = window._typingQueue        || {};   // { roleId: { timer, runAt } }
+window._autoSendTimers     = window._autoSendTimers     || {};   // { roleId: intervalId }
+window._unreadCache        = window._unreadCache        || {};   // { roleId: 未读数 }
+window._offlineReplies     = window._offlineReplies     || {};   // { roleId: [ fn ] }  已就绪但未在界面播放的回复
+
+// 工具：清掉某个角色的所有待处理回复定时器
+function _flushPendingReplies(roleId) {
+    var pool = window._pendingReplyQueue[roleId] || [];
+    pool.forEach(function(item) {
+        clearTimeout(item.timer);
+        // 还没到执行时间的，转为离线待办（等切回去时补上）
+        if (Date.now() < item.runAt) {
+            if (!window._offlineReplies[roleId]) window._offlineReplies[roleId] = [];
+            window._offlineReplies[roleId].push(item.fn);
+        }
+    });
+    window._pendingReplyQueue[roleId] = [];
+}
+
+// 工具：清掉某个角色的正在输入指示器
+function _clearTypingIndicator(roleId) {
+    var t = window._typingQueue[roleId];
+    if (t) { clearTimeout(t.timer); delete window._typingQueue[roleId]; }
+    if (window.SESSION_ID === roleId) {
+        var tiW = document.getElementById('typing-indicator-wrapper');
+        if (tiW) tiW.style.display = 'none';
+    }
+}
+
+// 工具：切回某个角色时，把它的离线待办依次执行
+function _restorePendingForRole(roleId) {
+    var offline = window._offlineReplies[roleId] || [];
+    if (offline.length > 0) {
+        window._unreadCache[roleId] = 0;
+        offline.forEach(function(fn) {
+            try { fn(); } catch(e) { console.warn('[restorePending] 执行失败', e); }
+        });
+        window._offlineReplies[roleId] = [];
+    }
+}
+
+// 工具：注册一个延迟回复任务（自动带角色隔离）
+function _scheduleReply(roleId, delayMs, taskFn) {
+    if (!window._pendingReplyQueue[roleId]) window._pendingReplyQueue[roleId] = [];
+    var runAt = Date.now() + delayMs;
+    var timer = setTimeout(function() {
+        // 把自己从队列里移除
+        var pool = window._pendingReplyQueue[roleId] || [];
+        var idx = pool.findIndex(function(p) { return p.timer === timer; });
+        if (idx !== -1) pool.splice(idx, 1);
+
+        if (window.SESSION_ID === roleId) {
+            try { taskFn(); } catch(e) { console.warn('[scheduleReply] 执行失败', e); }
+        } else {
+            // 切走了，记录未读，转存为离线
+            window._unreadCache[roleId] = (window._unreadCache[roleId] || 0) + 1;
+            if (!window._offlineReplies[roleId]) window._offlineReplies[roleId] = [];
+            window._offlineReplies[roleId].push(taskFn);
+            if (typeof showNotification === 'function') {
+                var pName = (window._roleNames && window._roleNames[roleId]) || '对方';
+                showNotification('💬 ' + pName + ' 给你发来了消息', 'info', 2500);
+            }
+        }
+    }, delayMs);
+    window._pendingReplyQueue[roleId].push({ timer: timer, runAt: runAt, fn: taskFn });
+    return timer;
+}
+
 
         function clearAllAppData() {
     const overlay = document.createElement('div');
@@ -398,26 +472,28 @@ const loadData = async () => {
             savedBackgrounds = [{ id: 'preset-1', type: 'color', value: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)' }];
         }
 
-        if (savedCustomReplies) customReplies = savedCustomReplies;
-        if (savedReplyGroups) window.customReplyGroups = savedReplyGroups;
-        if (savedPokeGroups) window.customPokeGroups = savedPokeGroups;
-        if (savedStatusGroups) window.customStatusGroups = savedStatusGroups;
-        if (savedAnniversaries) anniversaries = savedAnniversaries;
-        if (savedStickers) stickerLibrary = savedStickers;
-        if (savedMyStickers) myStickerLibrary = savedMyStickers;
-        if (savedCustomThemes) customThemes = savedCustomThemes;
-        if (savedThemeSchemes) themeSchemes = savedThemeSchemes;
-        try { const ce = await localforage.getItem(getStorageKey('customEmojis')); if (ce && Array.isArray(ce)) customEmojis = ce; } catch(e) {}
+        // ★ 强制隔离：无论新角色有没有数据，都用新角色的数据覆盖（没有就重置为空）
+        customReplies = savedCustomReplies || [];
+        window.customReplyGroups = savedReplyGroups || [];
+        window.customPokeGroups = savedPokeGroups || [];
+        window.customStatusGroups = savedStatusGroups || [];
+        anniversaries = savedAnniversaries || [];
+        stickerLibrary = savedStickers || [];
+        myStickerLibrary = savedMyStickers || [];
+        customThemes = savedCustomThemes || [];
+        themeSchemes = savedThemeSchemes || [];
         window._customReplies = customReplies;
-        window._CONSTANTS = CONSTANTS;
 
-        // === 高级功能模块赋值 ===
-        if (savedMoodData)         window.moodData         = savedMoodData;
-        if (savedEnvelopeData)     window.envelopeData     = savedEnvelopeData;
-        if (savedMomentsData)      window.momentsData      = savedMomentsData;
-        if (savedDreamSurveyData)  window.dreamSurveyData  = savedDreamSurveyData;
-        if (savedHeartMarketData)  window.heartMarketData  = savedHeartMarketData;
-        if (savedGroupChatSettings) window.groupChatSettings = savedGroupChatSettings;
+        // 高级功能模块赋值（有就用新角色的，没有就置空）
+        window.moodData          = savedMoodData || {};
+        window.envelopeData      = savedEnvelopeData || { outbox: [], inbox: [] };
+        window.momentsData       = savedMomentsData || { posts: [], lastGenerateDate: '' };
+        window.dreamSurveyData   = savedDreamSurveyData || {};
+        window.heartMarketData   = savedHeartMarketData || {};
+        window.groupChatSettings = savedGroupChatSettings || {};
+
+        try { const ce = await localforage.getItem(getStorageKey('customEmojis')); customEmojis = Array.isArray(ce) ? ce : []; } catch(e) { customEmojis = []; }
+        window._CONSTANTS = CONSTANTS;
 
         if (DOMElements && DOMElements.partner && DOMElements.me) {
             updateAvatar(DOMElements.partner.avatar, partnerAvatarSrc);
@@ -812,15 +888,21 @@ if (customIntros && customIntros.length > 0) {
             });
         }
 
+// ★ 主动发消息定时器按角色隔离
 function manageAutoSendTimer() {
-    if (autoSendTimer) {
-        clearInterval(autoSendTimer);
-        autoSendTimer = null;
+    const currentRole = window.SESSION_ID;
+    // 清掉当前角色旧的定时器
+    if (window._autoSendTimers[currentRole]) {
+        clearInterval(window._autoSendTimers[currentRole]);
+        delete window._autoSendTimers[currentRole];
     }
+
     if (settings.autoSendEnabled) {
         const intervalMs = settings.autoSendInterval * 60 * 1000;
-        
-        autoSendTimer = setInterval(() => {
+        const roleAtStart = currentRole;
+        window._autoSendTimers[roleAtStart] = setInterval(() => {
+            // 切走了就不触发（保持静默，切回来时它的定时器会重新挂上）
+            if (window.SESSION_ID !== roleAtStart) return;
             if (!document.body.classList.contains('batch-favorite-mode')) {
                 simulateReply(); 
             }
@@ -1455,40 +1537,83 @@ if (!isBatchMode && type === 'normal') {
     const shouldIgnore = settings.allowReadNoReply && (Math.random() < chance);
 
     const readDelay = 1500 + Math.random() * 2500;
-                setTimeout(() => {
-        let changed = false;
-        messages.forEach(msg => {
-            if (msg.sender === 'user' && msg.status !== 'read') {
-                msg.status = 'read';
-                changed = true;
-            }
-        });
-        if (changed) { _updateReadReceiptsDOM(); throttledSaveData(); }
-    }, readDelay);
+                // ★ 已读回执：带角色隔离
+                _scheduleReply(window.SESSION_ID, readDelay, function() {
+                    let changed = false;
+                    messages.forEach(msg => {
+                        if (msg.sender === 'user' && msg.status !== 'read') {
+                            msg.status = 'read';
+                            changed = true;
+                        }
+                    });
+                    if (changed) { _updateReadReceiptsDOM(); throttledSaveData(); }
+                });
 
     if (window._pendingReplyTimer) clearTimeout(window._pendingReplyTimer);
     window._pendingReplyTimer = null;
 
             if (!shouldIgnore) {
+        // ★ 正在输入指示器：带角色隔离
+        const sessionForTyping = window.SESSION_ID;
         if (settings.typingIndicatorEnabled) {
             const tiWrapper = document.getElementById('typing-indicator-wrapper');
             const tiLabel = document.getElementById('typing-indicator-label');
             const tiAvatar = document.getElementById('typing-indicator-avatar');
-            if (tiLabel) tiLabel.textContent = (settings.partnerName || '对方') + ' 正在输入';
-            if (tiWrapper) { 
-                positionTypingIndicator(); 
-                tiWrapper.style.display = 'block'; 
+            const showAt = randomDelay * 0.35;
+            const typingTimer = setTimeout(function() {
+                if (window.SESSION_ID !== sessionForTyping) {
+                    delete window._typingQueue[sessionForTyping];
+                    return;
+                }
+                if (tiLabel) tiLabel.textContent = (settings.partnerName || '对方') + ' 正在输入';
+                if (tiWrapper) {
+                    positionTypingIndicator();
+                    tiWrapper.style.display = 'block';
+                }
+                if (tiAvatar) {
+                    const partnerImg = DOMElements.partner.avatar.querySelector('img');
+                    tiAvatar.innerHTML = partnerImg ? `<img src="${partnerImg.src}">` : '<i class="fas fa-user"></i>';
+                }
+                if (DOMElements.chatContainer) DOMElements.chatContainer.scrollTop = DOMElements.chatContainer.scrollHeight;
+            }, showAt);
+            if (window._typingQueue[sessionForTyping]) {
+                clearTimeout(window._typingQueue[sessionForTyping].timer);
             }
-            if (tiAvatar) {
-                const partnerImg = DOMElements.partner.avatar.querySelector('img');
-                tiAvatar.innerHTML = partnerImg ? `<img src="${partnerImg.src}">` : '<i class="fas fa-user"></i>';
-            }
-            if (DOMElements.chatContainer) DOMElements.chatContainer.scrollTop = DOMElements.chatContainer.scrollHeight;
+            window._typingQueue[sessionForTyping] = { timer: typingTimer, runAt: Date.now() + showAt };
         }
-        window._pendingReplyTimer = setTimeout(() => {
-            window._pendingReplyTimer = null;
+
+        // ★ 真正模拟回复的延时：带角色隔离
+        const sessionForReply = window.SESSION_ID;
+        _scheduleReply(sessionForReply, randomDelay, function() {
+            // 执行前先把本角色的 typing 指示器清掉
+            if (window.SESSION_ID === sessionForReply) {
+                (function(){
+                    try {
+                        if (window._typingIndicatorAutoHideTimer) {
+                            clearTimeout(window._typingIndicatorAutoHideTimer);
+                            window._typingIndicatorAutoHideTimer = null;
+                        }
+                    } catch(e){}
+                    var _tiW = document.getElementById('typing-indicator-wrapper');
+                    if (_tiW) {
+                        var _tiInner = _tiW.querySelector('.typing-indicator');
+                        if (_tiInner) {
+                            _tiInner.classList.add('hiding');
+                            setTimeout(function() {
+                                _tiW.style.display = 'none';
+                                if (_tiInner) _tiInner.classList.remove('hiding');
+                            }, 240);
+                        } else {
+                            _tiW.style.display = 'none';
+                        }
+                    }
+                })();
+            }
+            if (window._typingQueue[sessionForReply]) {
+                delete window._typingQueue[sessionForReply];
+            }
             simulateReply();
-        }, randomDelay);
+        });
     }
 }
 };
@@ -1578,7 +1703,11 @@ if (!isBatchMode && type === 'normal') {
             });
             const delayRange = settings.replyDelayMax - settings.replyDelayMin;
             const randomDelay = settings.replyDelayMin + Math.random() * delayRange;
-            setTimeout(simulateReply, batchMessages.length * 300 + randomDelay);
+            // ★ 批量发送后的回复也带角色隔离
+            const sessionForReply = window.SESSION_ID;
+            _scheduleReply(sessionForReply, batchMessages.length * 300 + randomDelay, function() {
+                simulateReply();
+            });
             isBatchMode = false; batchMessages = [];
             DOMElements.batchBtn.classList.remove('active'); DOMElements.batchPreview.style.display = 'none';
             const placeholder = "";
@@ -1610,8 +1739,11 @@ if (!isBatchMode && type === 'normal') {
         })();
 
         window.simulateReply = function() {
+            const sessionAtStart = window.SESSION_ID;
+
             function showTypingIndicator() {
                 if (!settings.typingIndicatorEnabled) return;
+                if (window.SESSION_ID !== sessionAtStart) return;
                 const tiWrapper = document.getElementById('typing-indicator-wrapper');
                 const tiLabel = document.getElementById('typing-indicator-label');
                 const tiAvatar = document.getElementById('typing-indicator-avatar');
@@ -1691,7 +1823,8 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
             for (let i = 0; i < replyCount; i++) {
                 const delayRange = settings.replyDelayMax - settings.replyDelayMin;
                 delay += settings.replyDelayMin + Math.random() * delayRange;
-                setTimeout(() => {
+                // ★ 逐条回复：带角色隔离
+                _scheduleReply(sessionAtStart, delay, function() {
                     try {
                     const replyPool = replyPoolOnce;
                     let replyText = '';
@@ -1816,7 +1949,7 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                             })();
                         } catch (e2) {}
                     }
-                }, delay);
+                });
             }
         }
 
@@ -2322,31 +2455,51 @@ window.initializeSession = async function() {
 // 由 contact-switcher.js 调用，彻底解决切换串台问题
 // ============================================================
 window.switchActiveContact = async function(nextRole, nextName) {
-    // 1. 保存当前角色的数据（此时 SESSION_ID 还是旧的）
+    const oldRole = window.SESSION_ID;
+
+    // ★ 1. 保存旧角色所有延迟任务，转为"离线待办"
+    if (oldRole) {
+        _flushPendingReplies(oldRole);
+        _clearTypingIndicator(oldRole);
+        // 清掉旧角色的自动发送定时器（切回来时会由 loadData 重建）
+        if (window._autoSendTimers[oldRole]) {
+            clearInterval(window._autoSendTimers[oldRole]);
+            delete window._autoSendTimers[oldRole];
+        }
+    }
+
+    // 2. 保存旧角色数据
     if (typeof window.saveData === 'function') {
         try { await window.saveData(); } catch (e) { console.warn('[switchActiveContact] 保存旧角色失败:', e); }
     }
 
-    // 2. 切换内存中的 SESSION_ID 和 localStorage
+    // 3. 切换 SESSION_ID
     SESSION_ID = nextRole;
     window.currentContactId = nextRole;
     localStorage.setItem('active_contact_role', nextRole);
     await localforage.setItem(`${APP_PREFIX}lastSessionId`, nextRole);
 
-    // 3. 清空界面上旧角色的消息（防止旧消息在新角色下闪现）
+    // 4. 清空界面上旧角色的消息
     if (typeof DOMElements !== 'undefined' && DOMElements.chatContainer) {
         DOMElements.chatContainer.innerHTML = '';
     }
     messages = [];
     window.messages = [];
 
-    // 4. 重新加载新角色的数据（使用 window.loadData 显式调用，确保一定执行）
+    // 5. 重新加载新角色
     if (typeof window.loadData === 'function') {
         await window.loadData();
     }
 
-    // ★ 5. 切换后强制刷新信封 / 心晴手账的内存数据（关键）
-    // 用 window.xxx 判断，兼容脚本作用域不同导致的找不到全局函数问题
+    // ★ 6. 恢复新角色尚未展示的"离线回复"
+    _restorePendingForRole(nextRole);
+
+    // ★ 7. 重建新角色的自动发送定时器
+    if (typeof manageAutoSendTimer === 'function') {
+        manageAutoSendTimer();
+    }
+
+    // 8. 刷新信封 / 心晴手账内存数据
     try {
         if (typeof window.loadEnvelopeData === 'function') {
             await window.loadEnvelopeData();
@@ -2363,7 +2516,12 @@ window.switchActiveContact = async function(nextRole, nextName) {
         }
     } catch (e) { console.warn('[switchActiveContact] 重载心晴手账失败:', e); }
 
-    // 6. 更新界面名字
+    // 9. 刷新回复库 UI
+    if (typeof renderReplyLibrary === 'function') {
+        try { renderReplyLibrary(); } catch(e) {}
+    }
+
+    // 10. 更新界面名字
     const nameEl = document.getElementById('partner-name');
     if (nameEl && window.settings) {
         if (!window.settings.partnerName || window.settings.partnerName === '梦角') {
