@@ -191,6 +191,64 @@
 
     // 红包专用金额显示：明确标注"心意币"，避免与人民币混淆（红包里的钱就是心意币）
     function _fmtRpMoney(fen) { return (fen / 100).toFixed(2) + ' 心意币'; }
+
+    // =============================================
+    // 聊天框红包卡片（微信红包样式：红色卡片 · 领取后变浅）
+    // 说明：core.js 渲染消息时会把 msg.text 直接当 HTML 塞进气泡，
+    // 所以这里返回一段自包含的红包卡片 HTML，由 addMessage 写到 text 字段即可。
+    // side: 'received'（对方发我的，可点击领取）/ 'sent'（我发的，显示"已发出"）
+    // claimed: true 时卡片变浅灰
+    // =============================================
+    function _buildRedPacketCardHTML(amountFen, side, claimed, msgId) {
+        var amountStr = '¥' + (amountFen / 100).toFixed(2);
+        var isReceived = (side === 'received');
+        var bg = claimed
+            ? 'linear-gradient(135deg,#d6cdca 0%,#b3a9a6 100%)'   // 已领取：变浅
+            : 'linear-gradient(135deg,#e05a47 0%,#bf3a26 100%)';  // 未领取：微信红
+        var footText = claimed ? '● 已领取' : (isReceived ? '● 待领取' : '● 已发出');
+        var footColor = claimed ? '#9a9090' : '#c0392b';
+        var clickable = (isReceived && !claimed);
+        var cursor = clickable ? 'pointer' : 'default';
+        var clickAttr = clickable ? ' onclick="window._hmClaimRp(\'' + msgId + '\')"' : '';
+        var dim = claimed ? 'opacity:0.85;' : '';
+
+        return '<div' + clickAttr + ' data-hm-rp="1" data-msg-id="' + msgId + '" style="width:230px;max-width:100%;border-radius:14px;overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,0.18);cursor:' + cursor + ';">'
+            + '<div style="background:' + bg + ';padding:14px 16px;display:flex;align-items:center;gap:12px;">'
+                + '<div style="width:40px;height:40px;border-radius:10px;background:rgba(255,255,255,0.18);display:flex;align-items:center;justify-content:center;flex-shrink:0;">'
+                    + '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>'
+                + '</div>'
+                + '<div style="flex:1;min-width:0;color:#fff;' + dim + '">'
+                    + '<div style="font-size:14px;font-weight:600;">红包</div>'
+                    + '<div style="font-size:19px;font-weight:700;margin-top:2px;letter-spacing:0.3px;">' + amountStr + '</div>'
+                    + '<div style="font-size:10px;opacity:0.85;margin-top:2px;">心意红包</div>'
+                + '</div>'
+            + '</div>'
+            + '<div style="background:#fff;padding:6px 16px;font-size:11px;color:' + footColor + ';font-weight:600;">' + footText + '</div>'
+        + '</div>';
+    }
+
+    // 点击红包卡片领取：把消息对象里的 text 换成"已领取"版 HTML，然后重渲染聊天
+    window._hmClaimRp = function(msgId) {
+        try {
+            if (typeof messages === 'undefined') return;
+            var idx = -1;
+            for (var i = 0; i < messages.length; i++) {
+                if (String(messages[i].id) === String(msgId)) { idx = i; break; }
+            }
+            if (idx === -1) return;
+            var msg = messages[idx];
+            if (msg._rpClaimed) return;
+            msg._rpClaimed = true;
+            var amount = msg._rpAmount || 0;
+            msg.text = _buildRedPacketCardHTML(amount, 'received', true, msgId);
+            if (typeof renderMessages === 'function') renderMessages();
+            if (typeof throttledSaveData === 'function') throttledSaveData();
+            if (typeof showNotification === 'function') {
+                showNotification('🧧 已领取 ¥' + (amount / 100).toFixed(2) + ' 心意币', 'success', 2500);
+            }
+            if (typeof playSound === 'function') playSound('message');
+        } catch(e) { console.warn('[心意集市] 领取红包失败', e); }
+    };
     function _generateId() { return Date.now() + '_' + Math.random().toString(36).substr(2, 6); }
     function _formatTime(iso) {
         var date = new Date(iso);
@@ -485,19 +543,22 @@
         // 4) 祝福语：从字卡抽 2~4 条随机拼凑
         var blessing = _genWords(2 + Math.floor(Math.random() * 3));
 
-        // 5) 聊天里发一条红包消息（带角色锁：即使切到别的角色，也写入当前角色自己的存储池，不串框）
+        // 5) 聊天里发一条红包卡片消息（红色红包样式 · 待领取 · 带角色锁不串框）
         if (typeof addMessage === 'function') {
             try {
                 var rpRoleId = record.roleId || ((typeof _currentContactId === 'function') ? _currentContactId() : '');
+                var rpMsgId = _generateId();
                 addMessage({
-                    id: _generateId(),
+                    id: rpMsgId,
                     sender: 'partner',
-                    text: '🧧 我发给你一个红包\n' + _fmtRpMoney(amountFen) + '\n' + blessing,
+                    text: _buildRedPacketCardHTML(amountFen, 'received', false, rpMsgId),
                     timestamp: new Date(),
                     type: 'normal',
                     status: 'received',
                     quotable: false,
-                    contactId: rpRoleId || undefined
+                    contactId: rpRoleId || undefined,
+                    _rpAmount: amountFen,       // 领取时需要金额，挂在消息对象上随消息一起存
+                    _rpBlessing: blessing
                 }, { silent: true });
                 if (typeof playSound === 'function') playSound('message');
             } catch(e) { console.warn('对方发红包 addMessage 失败', e); }
@@ -626,18 +687,20 @@
         var historyId = _generateId();
         var blessingText = blessing || _genWords(2 + Math.floor(Math.random() * 3));
 
-        // 1) 聊天里发一条"我发的红包"消息
+        // 1) 聊天里发一条"我发的红包"卡片消息（红色红包样式 · 已发出）
         if (typeof addMessage === 'function') {
             try {
-                var rpMsg = '🧧 我发给你一个红包\n' + _fmtRpMoney(amountFen) + '\n' + blessingText;
+                var myRpMsgId = _generateId();
                 addMessage({
-                    id: _generateId(),
+                    id: myRpMsgId,
                     sender: 'user',
-                    text: rpMsg,
+                    text: _buildRedPacketCardHTML(amountFen, 'sent', false, myRpMsgId),
                     timestamp: new Date(),
                     type: 'normal',
                     status: 'sent',
-                    quotable: false
+                    quotable: false,
+                    _rpAmount: amountFen,
+                    _rpBlessing: blessingText
                 });
                 if (typeof playSound === 'function') playSound('send');
             } catch(e) { console.warn('发红包 addMessage 失败', e); }
