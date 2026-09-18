@@ -1,56 +1,60 @@
-/* 核心应用逻辑：数据加载保存、消息渲染、会话管理等 - 已整合多角色切换 + 高级功能隔离 + 回复隔离 */
+/* 核心应用逻辑：数据加载保存、消息渲染、会话管理等 - 已整合多角色切换 + 高级功能隔离 + 回复隔离（上下文快照版） */
 
 // ============================================================
-// 【多角色隔离】待处理回复定时器池
-// 每个角色独立存储未完成的 setTimeout，切换时不会串台
+// 【多角色隔离】核心数据结构
 // ============================================================
+// 每个角色拥有独立的 messages 数组，当前活跃的 messages 是 _roleMessages[SESSION_ID] 的引用
+window._roleMessages = window._roleMessages || {};
+// 每个角色独立的"待处理回复"队列（里面的任务已经冻结了当时的上下文）
 window._pendingReplies = window._pendingReplies || {};
-window._pendingTyping  = window._pendingTyping  || {};
+// 每个角色独立的"正在输入"指示器
+window._pendingTyping = window._pendingTyping || {};
+// 每个角色独立的"自动发送"定时器
 window._autoSendTimers = window._autoSendTimers || {};
-window._unreadCache    = window._unreadCache    || {};
+// 每个角色独立的未读计数
+window._unreadCache = window._unreadCache || {};
+// 每个角色独立的"离线待渲染回复结果"（已经生成好，等切回角色时再执行渲染）
 window._offlineReplies = window._offlineReplies || {};
 
-function _addPendingReply(roleId, delayMs, taskFn) {
+// 工具：取某个角色的 messages 数组（懒初始化）
+function _getRoleMessages(roleId) {
+    if (!window._roleMessages[roleId]) window._roleMessages[roleId] = [];
+    return window._roleMessages[roleId];
+}
+
+// 工具：往某个角色排队一个延迟任务，把上下文快照冻结进去
+function _addPendingReply(roleId, delayMs, taskFn, context) {
     if (!window._pendingReplies[roleId]) window._pendingReplies[roleId] = [];
     var executeAt = Date.now() + delayMs;
+    var ctx = context || {};
     var timer = setTimeout(function() {
+        // 从队列里移除自己
         var pool = window._pendingReplies[roleId] || [];
         var idx = pool.findIndex(function(p) { return p.timer === timer; });
         if (idx !== -1) pool.splice(idx, 1);
 
-        if (window.SESSION_ID === roleId) {
-            try { taskFn(); } catch(e) { console.warn('[pendingReply] 执行失败', e); }
-        } else {
+        // 无论当前在哪个角色，都用"冻结的 ctx"来执行 taskFn
+        // 这样即使已经切走，也不会污染当前角色的数据
+        try {
+            taskFn(ctx);
+        } catch(e) {
+            console.warn('[pendingReply] 执行失败', e);
+        }
+
+        // 如果当前不在这个角色，把任务标记成"离线未读"，并给出提示
+        if (window.SESSION_ID !== roleId) {
             window._unreadCache[roleId] = (window._unreadCache[roleId] || 0) + 1;
-            if (!window._offlineReplies[roleId]) window._offlineReplies[roleId] = [];
-            window._offlineReplies[roleId].push(taskFn);
             if (typeof showNotification === 'function') {
-                var pName = (window._roleNames && window._roleNames[roleId]) || '对方';
+                var pName = (ctx && ctx.partnerName) || (window._roleNames && window._roleNames[roleId]) || '对方';
                 showNotification('💬 ' + pName + ' 给你发来了消息', 'info', 2500);
             }
         }
     }, delayMs);
-    window._pendingReplies[roleId].push({ timer: timer, fn: taskFn, executeAt: executeAt });
+    window._pendingReplies[roleId].push({ timer: timer, fn: taskFn, executeAt: executeAt, ctx: ctx });
     return timer;
 }
 
-function _flushPendingReplies(roleId) {
-    var pool = window._pendingReplies[roleId] || [];
-    pool.forEach(function(p) {
-        clearTimeout(p.timer);
-        if (Date.now() < p.executeAt) {
-            var delay = p.executeAt - Date.now();
-            setTimeout(function() {
-                try { p.fn(); } catch(e) {}
-                if (window.SESSION_ID !== roleId) {
-                    window._unreadCache[roleId] = (window._unreadCache[roleId] || 0) + 1;
-                }
-            }, delay);
-        }
-    });
-    window._pendingReplies[roleId] = [];
-}
-
+// 工具：清空某个角色的正在输入指示器
 function _clearTypingIndicator(roleId) {
     var t = window._pendingTyping[roleId];
     if (t) {
@@ -63,14 +67,11 @@ function _clearTypingIndicator(roleId) {
     }
 }
 
-function _restorePendingForRole(roleId) {
-    var offline = (window._offlineReplies || {})[roleId] || [];
-    if (offline.length > 0) {
-        window._unreadCache[roleId] = 0;
-        offline.forEach(function(fn) {
-            try { fn(); } catch(e) { console.warn('[restorePending] 失败', e); }
-        });
-        window._offlineReplies[roleId] = [];
+// 工具：清空某个角色所有的自动发送定时器
+function _clearAutoSendTimer(roleId) {
+    if (window._autoSendTimers[roleId]) {
+        clearInterval(window._autoSendTimers[roleId]);
+        delete window._autoSendTimers[roleId];
     }
 }
 
@@ -115,7 +116,7 @@ function clearAllAppData() {
         closeDialog();
         if (confirm('确定要清除当前会话的所有消息吗？此操作无法恢复！')) {
             messages = [];
-            window.messages = messages;
+            window._roleMessages[SESSION_ID] = messages;
             displayedMessageCount = HISTORY_BATCH_SIZE;
             try { localStorage.removeItem('BACKUP_V1_critical'); } catch(e) {}
             try { localStorage.removeItem('BACKUP_V1_timestamp'); } catch(e) {}
@@ -130,6 +131,7 @@ function clearAllAppData() {
         if (confirm('【高危操作】确定要重置所有数据吗？此操作将清除所有本地数据且无法恢复！')) {
             window._skipBackup = true;
             messages = [];
+            window._roleMessages = {};
             settings = {};
             localforage.clear().then(() => {
                 localStorage.clear();
@@ -335,8 +337,10 @@ const applyBackground = (value) => {
 
 const loadData = async () => {
     try {
-        messages = [];
-        window.messages = [];
+        // 重要：把 messages 指向当前角色专属的数组
+        messages = _getRoleMessages(SESSION_ID);
+        messages.length = 0;
+        window.messages = messages;
         if (typeof DOMElements !== 'undefined' && DOMElements.chatContainer) {
             DOMElements.chatContainer.innerHTML = '';
         }
@@ -430,17 +434,22 @@ const loadData = async () => {
         else customIntros = CONSTANTS.WELCOME_ANIMATIONS.map(a => `${a.line1}|${a.line2}`);
 
         if (savedMessages && Array.isArray(savedMessages)) {
-            messages = savedMessages.map(m => ({
-                ...m, timestamp: new Date(m.timestamp)
-            }));
+            // 填充到当前角色专属数组
+            savedMessages.forEach(m => {
+                messages.push({
+                    ...m, timestamp: new Date(m.timestamp)
+                });
+            });
         } else {
             const backup = _tryRecoverFromBackup();
             if (backup && Array.isArray(backup.messages) && backup.messages.length > 0) {
                 const timeSince = Math.round((Date.now() - backup.ts) / 60000);
                 console.warn(`[loadData] 主存储无消息，正在从备份恢复（备份时间：${timeSince} 分钟前）`);
-                messages = backup.messages.map(m => ({
-                    ...m, timestamp: new Date(m.timestamp)
-                }));
+                backup.messages.forEach(m => {
+                    messages.push({
+                        ...m, timestamp: new Date(m.timestamp)
+                    });
+                });
                 if (backup.settings) Object.assign(settings, backup.settings);
                 if (backup.anniversaries && Array.isArray(backup.anniversaries)) {
                     anniversaries = backup.anniversaries;
@@ -450,8 +459,6 @@ const loadData = async () => {
                     `已从备份恢复 ${messages.length} 条消息${backup._truncated ? '（备份为最近200条）' : ''}`,
                     'warning', 6000
                 );
-            } else {
-                messages = [];
             }
         }
 
@@ -515,7 +522,7 @@ const loadData = async () => {
     } catch (e) {
         console.error("LoadData 内部致命错误:", e);
         settings = getDefaultSettings();
-        messages = [];
+        messages = _getRoleMessages(SESSION_ID);
         updateUI();
     }
 };
@@ -868,10 +875,7 @@ function initializeRandomUI() {
 
 function manageAutoSendTimer() {
     const currentRole = window.SESSION_ID;
-    if (window._autoSendTimers[currentRole]) {
-        clearInterval(window._autoSendTimers[currentRole]);
-        delete window._autoSendTimers[currentRole];
-    }
+    _clearAutoSendTimer(currentRole);
 
     if (settings.autoSendEnabled) {
         const intervalMs = settings.autoSendInterval * 60 * 1000;
@@ -1281,14 +1285,24 @@ function renderMessages(preserveScroll = false) {
     }
 }
 
+// 关键：往当前活跃角色的 messages 里追加消息
 const addMessage = (message) => {
     if (!(message.timestamp instanceof Date)) message.timestamp = new Date(message.timestamp);
 
     const container = DOMElements.chatContainer;
-    const wasEmpty = messages.length === 0;
+    const currentRole = window.SESSION_ID;
+    const targetMessages = _getRoleMessages(currentRole);
 
-    const prevMsg = messages.length > 0 ? messages[messages.length - 1] : null;
-    messages.push(message);
+    // 注意：messages 是全局变量，但每次 loadData 会把它指向 _roleMessages[SESSION_ID]
+    // 切换时不会重新赋值，所以这里必须确认 messages === targetMessages
+    if (messages !== targetMessages) {
+        messages = targetMessages;
+        window.messages = messages;
+    }
+
+    const wasEmpty = targetMessages.length === 0;
+    const prevMsg = targetMessages.length > 0 ? targetMessages[targetMessages.length - 1] : null;
+    targetMessages.push(message);
 
     if (wasEmpty) {
         DOMElements.emptyState.style.display = 'none';
@@ -1328,6 +1342,34 @@ const addMessage = (message) => {
     });
 
     throttledSaveData();
+};
+
+// 关键：不管当前在哪个角色，往指定角色的 messages 里追加消息（用于离线池回放）
+const addMessageToRole = (roleId, message) => {
+    if (!(message.timestamp instanceof Date)) message.timestamp = new Date(message.timestamp);
+    const targetMessages = _getRoleMessages(roleId);
+    targetMessages.push(message);
+    // 如果当前正在看的就是这个角色，就渲染出来
+    if (window.SESSION_ID === roleId) {
+        if (messages !== targetMessages) {
+            messages = targetMessages;
+            window.messages = messages;
+        }
+        // 简单策略：直接整体重渲染
+        renderMessages();
+    }
+    // 保存到目标角色的存储里
+    if (window.SESSION_ID === roleId) {
+        throttledSaveData();
+    } else {
+        // 切走的时候，直接写盘（不依赖 throttledSaveData，因为它存的是当前角色的）
+        try {
+            localforage.setItem(
+                `${APP_PREFIX}${roleId}_chatMessages`,
+                targetMessages
+            ).catch(() => {});
+        } catch(e) {}
+    }
 };
 
 window._addCallEvent = (icon, label, detail) => {
@@ -1509,17 +1551,35 @@ function sendMessage(textOverride = null, type = 'normal') {
 
             const readDelay = 1500 + Math.random() * 2500;
             const sessionAtSend = window.SESSION_ID;
+            // 冻结上下文：包括角色专属的 messages 数组引用、设置快照
+            const ctx = {
+                roleId: sessionAtSend,
+                roleMessages: _getRoleMessages(sessionAtSend),
+                settings: JSON.parse(JSON.stringify(settings)),
+                partnerName: settings.partnerName
+            };
 
-            _addPendingReply(sessionAtSend, readDelay, function() {
+            // 已读回执：基于冻结的 roleMessages 更新
+            _addPendingReply(sessionAtSend, readDelay, function(c) {
                 let changed = false;
-                messages.forEach(msg => {
+                c.roleMessages.forEach(msg => {
                     if (msg.sender === 'user' && msg.status !== 'read') {
                         msg.status = 'read';
                         changed = true;
                     }
                 });
-                if (changed) { _updateReadReceiptsDOM(); throttledSaveData(); }
-            });
+                if (changed) {
+                    if (window.SESSION_ID === c.roleId) {
+                        _updateReadReceiptsDOM();
+                    }
+                    // 保存到对应角色的存储
+                    if (window.SESSION_ID === c.roleId) {
+                        throttledSaveData();
+                    } else {
+                        try { localforage.setItem(`${APP_PREFIX}${c.roleId}_chatMessages`, c.roleMessages).catch(()=>{}); } catch(e) {}
+                    }
+                }
+            }, ctx);
 
             if (!shouldIgnore) {
                 const sessionForTyping = window.SESSION_ID;
@@ -1536,7 +1596,7 @@ function sendMessage(textOverride = null, type = 'normal') {
                             delete window._pendingTyping[sessionForTyping];
                             return;
                         }
-                        if (tiLabel) tiLabel.textContent = (settings.partnerName || '对方') + ' 正在输入';
+                        if (tiLabel) tiLabel.textContent = (ctx.partnerName || '对方') + ' 正在输入';
                         if (tiWrapper) {
                             positionTypingIndicator();
                             tiWrapper.style.display = 'block';
@@ -1550,9 +1610,11 @@ function sendMessage(textOverride = null, type = 'normal') {
                     window._pendingTyping[sessionForTyping] = { timer: typingTimer, executeAt: Date.now() + showAt };
                 }
 
+                // 生成回复：任务里用 ctx.roleMessages 和 ctx.settings，而不是全局 messages / settings
                 const sessionForReply = window.SESSION_ID;
-                _addPendingReply(sessionForReply, randomDelay, function() {
-                    if (window.SESSION_ID === sessionForReply) {
+                _addPendingReply(sessionForReply, randomDelay, function(c) {
+                    // 清掉"正在输入"
+                    if (window.SESSION_ID === c.roleId) {
                         (function(){
                             try {
                                 if (window._typingIndicatorAutoHideTimer) {
@@ -1575,11 +1637,12 @@ function sendMessage(textOverride = null, type = 'normal') {
                             }
                         })();
                     }
-                    if (window._pendingTyping[sessionForReply]) {
-                        delete window._pendingTyping[sessionForReply];
+                    if (window._pendingTyping[c.roleId]) {
+                        delete window._pendingTyping[c.roleId];
                     }
-                    simulateReply();
-                });
+                    // 生成回复：直接操作 c.roleMessages，渲染用 addMessageToRole
+                    _generateReplyForRole(c.roleId, c.roleMessages, c.settings);
+                }, ctx);
             }
         }
     };
@@ -1592,6 +1655,150 @@ function sendMessage(textOverride = null, type = 'normal') {
     }
     DOMElements.imageInput.value = '';
 }
+
+// 关键：给指定角色生成回复，操作的是传入的 targetMessages 和 settingsSnapshot
+function _generateReplyForRole(roleId, targetMessages, settingsSnapshot) {
+    if (!settingsSnapshot) settingsSnapshot = settings;
+    if (!targetMessages) targetMessages = _getRoleMessages(roleId);
+
+    // 使用冻结的 customReplies（当前角色也在用，因为自定义回复库已经按角色隔离）
+    const replies = (typeof customReplies !== 'undefined' && customReplies) ? customReplies : [];
+    if (!replies || replies.length === 0) {
+        if (window.SESSION_ID === roleId && typeof showNotification === 'function') {
+            showNotification('回复库为空，请先到「自定义回复」中添加内容', 'info', 3500);
+        }
+        return;
+    }
+    const disabledItemsOnce = (() => {
+        try {
+            const raw = localStorage.getItem('disabledReplyItems');
+            return raw ? new Set(JSON.parse(raw)) : new Set();
+        } catch (e) { return new Set(); }
+    })();
+    const disabledGroupItemsOnce = new Set();
+    (window.customReplyGroups || []).forEach(g => {
+        if (g.disabled && Array.isArray(g.items)) g.items.forEach(item => disabledGroupItemsOnce.add(item));
+    });
+    const replyPoolOnce = replies
+        .filter(r => !disabledItemsOnce.has(r) && !disabledGroupItemsOnce.has(r))
+        .map(r => String(r || '').trim())
+        .filter(Boolean);
+    if (!replyPoolOnce.length) {
+        if (window.SESSION_ID === roleId && typeof showNotification === 'function') {
+            showNotification('回复库可用内容为空，请到「自定义回复」中调整', 'info', 4000);
+        }
+        return;
+    }
+
+    const pName = settingsSnapshot.partnerName || '对方';
+
+    const replyCount = Math.random() < 0.75 ? 1 : (Math.random() < 0.95 ? 2 : 3);
+    let delay = 0;
+    const recentUserMsgs = settingsSnapshot.replyEnabled
+        ? targetMessages.filter(m => m.sender === 'user' && m.text).slice(-10)
+        : [];
+
+    for (let i = 0; i < replyCount; i++) {
+        const delayRange = settingsSnapshot.replyDelayMax - settingsSnapshot.replyDelayMin;
+        delay += settingsSnapshot.replyDelayMin + Math.random() * delayRange;
+        _addPendingReply(roleId, delay, function(c) {
+            try {
+                const pool = replyPoolOnce;
+                let replyText = '';
+                for (let t = 0; t < 6; t++) {
+                    const picked = pool[Math.floor(Math.random() * pool.length)];
+                    if (picked && String(picked).trim()) {
+                        replyText = String(picked).trim();
+                        break;
+                    }
+                }
+                if (!replyText) return;
+
+                let finalText = replyText;
+                let separateEmoji = null;
+                if (customEmojis && customEmojis.length > 0 && Math.random() < 0.2) {
+                    const emoji = customEmojis[Math.floor(Math.random() * customEmojis.length)];
+                    if (settingsSnapshot.emojiMixEnabled !== false) {
+                        finalText = Math.random() < 0.5 ? emoji + ' ' + replyText : replyText + ' ' + emoji;
+                    } else {
+                        separateEmoji = emoji;
+                    }
+                }
+
+                const replyMsg = {
+                    id: Date.now() + i,
+                    sender: pName,
+                    text: finalText,
+                    timestamp: new Date(),
+                    status: 'received',
+                    favorited: false,
+                    note: null,
+                    replyTo: (i === 0 && recentUserMsgs.length > 0 && Math.random() < 0.3)
+                        ? (function(){ const m = recentUserMsgs[Math.floor(Math.random() * recentUserMsgs.length)]; return { id: m.id, text: m.text, sender: m.sender }; })()
+                        : null,
+                    type: 'normal'
+                };
+
+                // 关键：使用 addMessageToRole，把消息加到对应角色的 messages 里
+                addMessageToRole(roleId, replyMsg);
+
+                if (window.SESSION_ID === roleId) {
+                    if (typeof playSound === 'function') playSound('message');
+                    if (typeof window._sendPartnerNotification === 'function') {
+                        window._sendPartnerNotification(pName, finalText);
+                    }
+                }
+
+                if (separateEmoji) {
+                    setTimeout(function() {
+                        addMessageToRole(roleId, {
+                            id: Date.now() + i + 1000,
+                            sender: pName,
+                            text: separateEmoji,
+                            timestamp: new Date(),
+                            status: 'received',
+                            favorited: false,
+                            note: null,
+                            type: 'normal'
+                        });
+                    }, 300 + Math.random() * 400);
+                }
+
+                if (i === replyCount - 1 && window.SESSION_ID === roleId) {
+                    (function() {
+                        try {
+                            if (window._typingIndicatorAutoHideTimer) {
+                                clearTimeout(window._typingIndicatorAutoHideTimer);
+                                window._typingIndicatorAutoHideTimer = null;
+                            }
+                        } catch (e) {}
+                        var _tiW = document.getElementById('typing-indicator-wrapper');
+                        if (_tiW) {
+                            var _tiInner = _tiW.querySelector('.typing-indicator');
+                            if (_tiInner) {
+                                _tiInner.classList.add('hiding');
+                                setTimeout(function() {
+                                    _tiW.style.display = 'none';
+                                    if (_tiInner) _tiInner.classList.remove('hiding');
+                                }, 240);
+                            } else {
+                                _tiW.style.display = 'none';
+                            }
+                        }
+                    })();
+                }
+            } catch (e) {
+                console.error('[replyForRole] 出错:', e);
+            }
+        }, { roleId: roleId, roleMessages: targetMessages, partnerName: pName });
+    }
+}
+
+// 兼容旧调用：simulateReply 现在只是给"当前角色"生成回复
+window.simulateReply = function() {
+    const roleId = window.SESSION_ID;
+    _generateReplyForRole(roleId, _getRoleMessages(roleId), settings);
+};
 
 function toggleBatchMode() {
     isBatchMode = !isBatchMode;
@@ -1659,17 +1866,27 @@ function updateBatchPreview() {
 function sendBatchMessages() {
     if (batchMessages.length === 0) return;
     showNotification(`正在发送 ${batchMessages.length} 条消息...`, 'info', 2000);
+    const roleAtStart = window.SESSION_ID;
+    const targetMessages = _getRoleMessages(roleAtStart);
+    const ctx = {
+        roleId: roleAtStart,
+        roleMessages: targetMessages,
+        settings: JSON.parse(JSON.stringify(settings)),
+        partnerName: settings.partnerName
+    };
     batchMessages.forEach((msg, index) => {
         setTimeout(() => {
-            addMessage({
+            addMessageToRole(roleAtStart, {
                 id: Date.now() + index, sender: 'user', text: msg.text || '', image: msg.image || null, timestamp: new Date(), status: 'sent', favorited: false, type: 'normal'
             });
-            playSound('send');
+            if (window.SESSION_ID === roleAtStart && typeof playSound === 'function') playSound('send');
         }, index * 300);
     });
     const delayRange = settings.replyDelayMax - settings.replyDelayMin;
     const randomDelay = settings.replyDelayMin + Math.random() * delayRange;
-    setTimeout(simulateReply, batchMessages.length * 300 + randomDelay);
+    _addPendingReply(roleAtStart, batchMessages.length * 300 + randomDelay, function(c) {
+        _generateReplyForRole(c.roleId, c.roleMessages, c.settings);
+    }, ctx);
     isBatchMode = false; batchMessages = [];
     DOMElements.batchBtn.classList.remove('active'); DOMElements.batchPreview.style.display = 'none';
     const placeholder = "";
@@ -1699,236 +1916,6 @@ function positionTypingIndicator() {
     });
     ro.observe(inputArea);
 })();
-
-window.simulateReply = function() {
-    const sessionAtStart = window.SESSION_ID;
-
-    function showTypingIndicator() {
-        if (!settings.typingIndicatorEnabled) return;
-        if (window.SESSION_ID !== sessionAtStart) return;
-        const tiWrapper = document.getElementById('typing-indicator-wrapper');
-        const tiLabel = document.getElementById('typing-indicator-label');
-        const tiAvatar = document.getElementById('typing-indicator-avatar');
-        if (tiLabel) tiLabel.textContent = (settings.partnerName || '对方') + ' 正在输入';
-        if (tiWrapper) {
-            positionTypingIndicator();
-            tiWrapper.style.display = 'block';
-        }
-        if (tiAvatar) {
-            const partnerImg = DOMElements.partner.avatar.querySelector('img');
-            tiAvatar.innerHTML = partnerImg ? `<img src="${partnerImg.src}">` : '<i class="fas fa-user"></i>';
-        }
-        DOMElements.chatContainer.scrollTop = DOMElements.chatContainer.scrollHeight;
-    }
-
-    let changed = false;
-    messages.forEach(msg => {
-        if (msg.sender === 'user' && msg.status !== 'read') {
-            msg.status = 'read'; changed = true;
-        }
-    });
-    if (changed) {
-        _updateReadReceiptsDOM(); throttledSaveData();
-    }
-
-    if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
-        const currentPool = [...partnerPersonas];
-        if (currentPool.length > 0) {
-            const nextPersona = currentPool[Math.floor(Math.random() * currentPool.length)];
-            settings.partnerName = nextPersona.name;
-            DOMElements.partner.name.textContent = nextPersona.name;
-            if (nextPersona.avatar) {
-                updateAvatar(DOMElements.partner.avatar, nextPersona.avatar);
-                localforage.setItem(getStorageKey('partnerAvatar'), nextPersona.avatar);
-            }
-            throttledSaveData();
-        }
-    }
-    if (Math.random() < 0.03) {
-        if (typeof window._triggerPartnerPoke === 'function') window._triggerPartnerPoke();
-        return;
-    }
-
-    const replyCount = Math.random() < 0.75 ? 1 : (Math.random() < 0.95 ? 2 : 3);
-    if (!customReplies || customReplies.length === 0) {
-        showNotification('回复库为空，请先到「自定义回复」中添加内容', 'info', 3500);
-        return;
-    }
-    const disabledItemsOnce = (() => {
-        try {
-            const raw = localStorage.getItem('disabledReplyItems');
-            return raw ? new Set(JSON.parse(raw)) : new Set();
-        } catch (e) { return new Set(); }
-    })();
-    const disabledGroupItemsOnce = new Set();
-    (window.customReplyGroups || []).forEach(g => {
-        if (g.disabled && Array.isArray(g.items)) g.items.forEach(item => disabledGroupItemsOnce.add(item));
-    });
-    const replyPoolOnce = customReplies
-        .filter(r => !disabledItemsOnce.has(r) && !disabledGroupItemsOnce.has(r))
-        .map(r => String(r || '').trim())
-        .filter(Boolean);
-    if (!replyPoolOnce.length) {
-        showNotification('回复库可用内容为空（可能被分组禁用或屏蔽），请到「自定义回复」中调整', 'info', 4000);
-        return;
-    }
-
-    showTypingIndicator();
-    let delay = 0;
-    const recentUserMsgs = settings.replyEnabled
-        ? messages.filter(m => m.sender === 'user' && m.text).slice(-10)
-        : [];
-    for (let i = 0; i < replyCount; i++) {
-        const delayRange = settings.replyDelayMax - settings.replyDelayMin;
-        delay += settings.replyDelayMin + Math.random() * delayRange;
-        _addPendingReply(sessionAtStart, delay, function() {
-            try {
-                const replyPool = replyPoolOnce;
-                let replyText = '';
-                for (let t = 0; t < 6; t++) {
-                    const picked = replyPool[Math.floor(Math.random() * replyPool.length)];
-                    if (picked && String(picked).trim()) {
-                        replyText = String(picked).trim();
-                        break;
-                    }
-                }
-                if (!replyText && i === replyCount - 1) {
-                    (function(){
-                        try {
-                            if (window._typingIndicatorAutoHideTimer) {
-                                clearTimeout(window._typingIndicatorAutoHideTimer);
-                                window._typingIndicatorAutoHideTimer = null;
-                            }
-                        } catch(e){}
-                        var _tiW = document.getElementById('typing-indicator-wrapper');
-                        if (_tiW) {
-                            var _tiInner = _tiW.querySelector('.typing-indicator');
-                            if (_tiInner) {
-                                _tiInner.classList.add('hiding');
-                                setTimeout(function(){
-                                    _tiW.style.display = 'none';
-                                    if (_tiInner) _tiInner.classList.remove('hiding');
-                                }, 240);
-                            } else {
-                                _tiW.style.display = 'none';
-                            }
-                        }
-                    })();
-                    return;
-                }
-
-                let disabledStickerItems = new Set();
-                try {
-                    const raw = localStorage.getItem('disabledStickerItems');
-                    if (raw) disabledStickerItems = new Set(JSON.parse(raw));
-                } catch (e) {}
-                const enabledStickerPool = (stickerLibrary || []).filter(s => !disabledStickerItems.has(s));
-                const shouldSendSticker = enabledStickerPool.length > 0 && Math.random() < 0.2;
-
-                let finalText = replyText;
-                let separateEmoji = null;
-                if (customEmojis && customEmojis.length > 0 && Math.random() < 0.2) {
-                    const emoji = customEmojis[Math.floor(Math.random() * customEmojis.length)];
-                    if (settings.emojiMixEnabled !== false) {
-                        finalText = Math.random() < 0.5
-                            ? emoji + ' ' + replyText
-                            : replyText + ' ' + emoji;
-                    } else {
-                        separateEmoji = emoji;
-                    }
-                }
-
-                addMessage({
-                    id: Date.now() + i,
-                    sender: settings.partnerName || '对方',
-                    text: finalText,
-                    timestamp: new Date(),
-                    status: 'received',
-                    favorited: false,
-                    note: null,
-                    replyTo: (i === 0 && recentUserMsgs.length > 0 && Math.random() < 0.3)
-                        ? (function(){ const m = recentUserMsgs[Math.floor(Math.random() * recentUserMsgs.length)]; return { id: m.id, text: m.text, sender: m.sender }; })()
-                        : null,
-                    type: 'normal'
-                });
-                if (typeof window._sendPartnerNotification === 'function') {
-                    window._sendPartnerNotification(settings.partnerName || '对方', finalText);
-                }
-                playSound('message');
-
-                if (shouldSendSticker) {
-                    const randomSticker = enabledStickerPool[Math.floor(Math.random() * enabledStickerPool.length)];
-                    setTimeout(() => {
-                        addMessage({
-                            id: Date.now() + i + 2000,
-                            sender: settings.partnerName || '对方',
-                            text: '',
-                            timestamp: new Date(),
-                            image: randomSticker,
-                            status: 'received',
-                            favorited: false,
-                            note: null,
-                            type: 'normal'
-                        });
-                        playSound('message');
-                        if (typeof window._sendPartnerNotification === 'function') {
-                            window._sendPartnerNotification(settings.partnerName || '对方', '[表情]');
-                        }
-                    }, 400 + Math.random() * 600);
-                }
-
-                if (separateEmoji) {
-                    setTimeout(() => {
-                        addMessage({
-                            id: Date.now() + i + 1000,
-                            sender: settings.partnerName || '对方',
-                            text: separateEmoji,
-                            timestamp: new Date(),
-                            status: 'received',
-                            favorited: false,
-                            note: null,
-                            type: 'normal'
-                        });
-                        playSound('message');
-                    }, 300 + Math.random() * 400);
-                }
-
-                if (i === replyCount - 1) {
-                    (function() {
-                        try {
-                            if (window._typingIndicatorAutoHideTimer) {
-                                clearTimeout(window._typingIndicatorAutoHideTimer);
-                                window._typingIndicatorAutoHideTimer = null;
-                            }
-                        } catch (e) {}
-                        var _tiW = document.getElementById('typing-indicator-wrapper');
-                        if (_tiW) {
-                            var _tiInner = _tiW.querySelector('.typing-indicator');
-                            if (_tiInner) {
-                                _tiInner.classList.add('hiding');
-                                setTimeout(function() {
-                                    _tiW.style.display = 'none';
-                                    if (_tiInner) _tiInner.classList.remove('hiding');
-                                }, 240);
-                            } else {
-                                _tiW.style.display = 'none';
-                            }
-                        }
-                    })();
-                }
-            } catch (e) {
-                console.error('[simulateReply] 渲染/回填出错:', e);
-                try {
-                    (function(){
-                        try { if (window._typingIndicatorAutoHideTimer) { clearTimeout(window._typingIndicatorAutoHideTimer); window._typingIndicatorAutoHideTimer = null; } } catch (e2) {}
-                        var _tiW2 = document.getElementById('typing-indicator-wrapper');
-                        if (_tiW2) _tiW2.style.display = 'none';
-                    })();
-                } catch (e2) {}
-            }
-        });
-    }
-};
 
 function showModal(modalElement, focusElement = null) {
     if (modalElement._hideTimeout) {
@@ -2266,7 +2253,10 @@ function importChatHistory(file) {
                 closeDialog();
 
                 if (doMsgs) {
-                    messages = importedData.messages.map(m => ({ ...m, timestamp: new Date(m.timestamp) }));
+                    messages.length = 0;
+                    importedData.messages.forEach(m => {
+                        messages.push({ ...m, timestamp: new Date(m.timestamp) });
+                    });
                 }
                 if (doSettings) {
                     if (importedData.settings) {
@@ -2427,14 +2417,11 @@ window.initializeSession = async function() {
 window.switchActiveContact = async function(nextRole, nextName) {
     const oldRole = window.SESSION_ID;
 
-    // 1. 保存旧角色所有待处理回复，并清掉"正在输入"指示器
+    // 1. 保存旧角色数据 + 清掉 UI 上的正在输入指示器
     if (oldRole) {
-        _flushPendingReplies(oldRole);
         _clearTypingIndicator(oldRole);
-        if (window._autoSendTimers[oldRole]) {
-            clearInterval(window._autoSendTimers[oldRole]);
-            delete window._autoSendTimers[oldRole];
-        }
+        // 注意：不要清掉 _pendingReplies / _autoSendTimers
+        // 因为它们是角色专属的，会在后台跑完，并自动写入对应角色
     }
 
     // 2. 保存旧角色数据
@@ -2452,23 +2439,18 @@ window.switchActiveContact = async function(nextRole, nextName) {
     if (typeof DOMElements !== 'undefined' && DOMElements.chatContainer) {
         DOMElements.chatContainer.innerHTML = '';
     }
-    messages = [];
-    window.messages = [];
 
     // 5. 重新加载新角色数据
     if (typeof window.loadData === 'function') {
         await window.loadData();
     }
 
-    // ★ 6. 恢复新角色尚未展示的"离线回复"
-    _restorePendingForRole(nextRole);
-
-    // 7. 重建新角色的自动发送定时器
+    // 6. 重建新角色的自动发送定时器
     if (typeof manageAutoSendTimer === 'function') {
         manageAutoSendTimer();
     }
 
-    // 8. 刷新信封 / 心晴手账内存数据
+    // 7. 刷新信封 / 心晴手账内存数据
     try {
         if (typeof window.loadEnvelopeData === 'function') {
             await window.loadEnvelopeData();
@@ -2485,7 +2467,7 @@ window.switchActiveContact = async function(nextRole, nextName) {
         }
     } catch (e) { console.warn('[switchActiveContact] 重载心晴手账失败:', e); }
 
-    // 9. 更新界面名字
+    // 8. 更新界面名字
     const nameEl = document.getElementById('partner-name');
     if (nameEl && window.settings) {
         if (!window.settings.partnerName || window.settings.partnerName === '梦角') {
