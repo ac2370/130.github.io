@@ -2323,7 +2323,6 @@ window.initializeSession = async function() {
 // ============================================================
 window.switchActiveContact = async function(nextRole, nextName) {
     // 1. 保存当前角色的数据（此时 SESSION_ID 还是旧的）
-    // 使用 window.saveData() 显式调用，避免作用域问题
     if (typeof window.saveData === 'function') {
         try { await window.saveData(); } catch (e) { console.warn('[switchActiveContact] 保存旧角色失败:', e); }
     }
@@ -2347,14 +2346,19 @@ window.switchActiveContact = async function(nextRole, nextName) {
     }
 
     // ★ 5. 切换后强制刷新信封 / 心晴手账的内存数据（关键）
+    // 用 window.xxx 判断，兼容脚本作用域不同导致的找不到全局函数问题
     try {
-        if (typeof loadEnvelopeData === 'function') {
+        if (typeof window.loadEnvelopeData === 'function') {
+            await window.loadEnvelopeData();
+        } else if (typeof loadEnvelopeData === 'function') {
             await loadEnvelopeData();
         }
     } catch (e) { console.warn('[switchActiveContact] 重载信封失败:', e); }
 
     try {
-        if (typeof initMoodData === 'function') {
+        if (typeof window.initMoodData === 'function') {
+            await window.initMoodData();
+        } else if (typeof initMoodData === 'function') {
             await initMoodData();
         }
     } catch (e) { console.warn('[switchActiveContact] 重载心晴手账失败:', e); }
