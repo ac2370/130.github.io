@@ -1761,7 +1761,7 @@ function initializeRandomUI() {
 
             scrambleText(subEl, line2, 2000);
 
-        }, 600);
+           }, 600);
 
     } else {
 
@@ -3525,7 +3525,7 @@ function positionTypingIndicator() {
 
     var tiW = document.getElementById('typing-indicator-wrapper');
 
-    var inputArea = document.querySelector('.input-area-wrapper');
+ var inputArea = document.querySelector('.input-area-wrapper');
 
     if (!tiW || !inputArea) return;
 
@@ -5006,7 +5006,7 @@ function importChatHistory(file) {
 
                     }
 
-                    if (importedData.dgCustomData) { try { localStorage.setItem('dg_custom_data', JSON.stringify(importedData.dgCustomData)); } catch(e2) {} }
+                      if (importedData.dgCustomData) { try { localStorage.setItem('dg_custom_data', JSON.stringify(importedData.dgCustomData)); } catch(e2) {} }
 
                     if (importedData.dgStatusPool) { try { localStorage.setItem('dg_status_pool', JSON.stringify(importedData.dgStatusPool)); } catch(e2) {} }
 
