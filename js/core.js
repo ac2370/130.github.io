@@ -2346,7 +2346,20 @@ window.switchActiveContact = async function(nextRole, nextName) {
         await window.loadData();
     }
 
-    // 5. 更新界面名字
+    // ★ 5. 切换后强制刷新信封 / 心晴手账的内存数据（关键）
+    try {
+        if (typeof loadEnvelopeData === 'function') {
+            await loadEnvelopeData();
+        }
+    } catch (e) { console.warn('[switchActiveContact] 重载信封失败:', e); }
+
+    try {
+        if (typeof initMoodData === 'function') {
+            await initMoodData();
+        }
+    } catch (e) { console.warn('[switchActiveContact] 重载心晴手账失败:', e); }
+
+    // 6. 更新界面名字
     const nameEl = document.getElementById('partner-name');
     if (nameEl && window.settings) {
         if (!window.settings.partnerName || window.settings.partnerName === '梦角') {
