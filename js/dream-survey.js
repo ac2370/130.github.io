@@ -1,9 +1,4 @@
-// dream-survey.js - 完整梦向问卷系统（每日随机弹出2~4次版 · 多角色隔离版）
-// 修改说明：
-// 1. 所有通过 addMessage 发送的消息都添加 quotable: false，禁止引用
-// 2. 每日问卷在24小时内随机弹出 2~4 次（不再使用40%概率单次判断）
-// 3. 默认字卡库使用 "动态.docx" 中的内容（共 400+ 条）
-// 4. 所有存储键均通过 getStorageKey() 生成，与角色 SESSION_ID 绑定，实现多角色隔离
+// dream-survey.js - 完整梦向问卷系统（每日随机弹出2~4次版 · 多角色隔离版 · 启动顺序修复版）
 (function() {
     'use strict';
 
@@ -15,7 +10,6 @@
     const QUESTIONNAIRES_KEY = 'dreamSurvey_questionnaires';
     const HISTORY_KEY = 'dreamSurvey_history';
 
-    // 内置恋爱向每日问题池
     const DEFAULT_QUESTIONS = [
         { q: '你最喜欢我身上哪个小习惯？', type: 'choice', options: ['笑容', '声音', '走路姿势', '说话语气'] },
         { q: '我们第一次约会时，你心里在想什么？', type: 'choice', options: ['好紧张', 'TA好可爱', '时间过快点', '想牵TA的手'] },
@@ -35,34 +29,55 @@
     ];
 
     // =============================================
-    // 2. 工具函数（全部走 getStorageKey 实现角色隔离）
+    // 2. 工具函数（全部走 getStorageKey，SESSION_ID 未就绪时直接返回默认值）
     // =============================================
+    function _safeGetStorageKey(key) {
+        if (!window.SESSION_ID) return null;
+        try { return getStorageKey(key); } catch (e) { return null; }
+    }
+
     function _getCustomList() {
-        try { return JSON.parse(localStorage.getItem(getStorageKey(CUSTOM_KEY))) || []; } catch { return []; }
+        const k = _safeGetStorageKey(CUSTOM_KEY);
+        if (!k) return [];
+        try { return JSON.parse(localStorage.getItem(k)) || []; } catch { return []; }
     }
     function _setCustomList(list) {
-        localStorage.setItem(getStorageKey(CUSTOM_KEY), JSON.stringify(list));
+        const k = _safeGetStorageKey(CUSTOM_KEY);
+        if (!k) return;
+        localStorage.setItem(k, JSON.stringify(list));
     }
     function _getDailyRecord() {
-        try { return JSON.parse(localStorage.getItem(getStorageKey(DAILY_KEY))) || {}; } catch { return {}; }
+        const k = _safeGetStorageKey(DAILY_KEY);
+        if (!k) return {};
+        try { return JSON.parse(localStorage.getItem(k)) || {}; } catch { return {}; }
     }
     function _setDailyRecord(rec) {
-        localStorage.setItem(getStorageKey(DAILY_KEY), JSON.stringify(rec));
+        const k = _safeGetStorageKey(DAILY_KEY);
+        if (!k) return;
+        localStorage.setItem(k, JSON.stringify(rec));
     }
     function _getQuestionnaires() {
-        try { return JSON.parse(localStorage.getItem(getStorageKey(QUESTIONNAIRES_KEY))) || []; } catch { return []; }
+        const k = _safeGetStorageKey(QUESTIONNAIRES_KEY);
+        if (!k) return [];
+        try { return JSON.parse(localStorage.getItem(k)) || []; } catch { return []; }
     }
     function _setQuestionnaires(list) {
-        localStorage.setItem(getStorageKey(QUESTIONNAIRES_KEY), JSON.stringify(list));
+        const k = _safeGetStorageKey(QUESTIONNAIRES_KEY);
+        if (!k) return;
+        localStorage.setItem(k, JSON.stringify(list));
     }
     function _getHistory() {
-        try { return JSON.parse(localStorage.getItem(getStorageKey(HISTORY_KEY))) || []; } catch { return []; }
+        const k = _safeGetStorageKey(HISTORY_KEY);
+        if (!k) return [];
+        try { return JSON.parse(localStorage.getItem(k)) || []; } catch { return []; }
     }
     function _addHistory(entry) {
+        const k = _safeGetStorageKey(HISTORY_KEY);
+        if (!k) return;
         const h = _getHistory();
         h.push(entry);
         if (h.length > 100) h.shift();
-        localStorage.setItem(getStorageKey(HISTORY_KEY), JSON.stringify(h));
+        localStorage.setItem(k, JSON.stringify(h));
     }
 
     function _getAllQuestions() {
@@ -267,16 +282,18 @@
         if (window.customReplies && Array.isArray(window.customReplies)) {
             cards = window.customReplies.map(c => typeof c === 'string' ? c : (c.text || c.label || ''));
         }
-        try {
-            // 关键：走 getStorageKey('customReplies')，与角色绑定
-            const stored = localStorage.getItem(getStorageKey('customReplies'));
-            if (stored) {
-                const parsed = JSON.parse(stored);
-                if (Array.isArray(parsed)) {
-                    cards = parsed.map(c => typeof c === 'string' ? c : (c.text || c.label || ''));
+        const k = _safeGetStorageKey('customReplies');
+        if (k) {
+            try {
+                const stored = localStorage.getItem(k);
+                if (stored) {
+                    const parsed = JSON.parse(stored);
+                    if (Array.isArray(parsed)) {
+                        cards = parsed.map(c => typeof c === 'string' ? c : (c.text || c.label || ''));
+                    }
                 }
-            }
-        } catch(e) {}
+            } catch(e) {}
+        }
         if (cards.length === 0) {
             cards = DEFAULT_REPLY_CARDS.slice();
         }
@@ -331,35 +348,28 @@
     }
 
     // =============================================
-    // 3. 每日随机弹出（每天2~4次，24小时内随机时间）
+    // 3. 每日随机弹出
     // =============================================
     function _checkDailyPopup() {
+        if (!window.SESSION_ID) return;
         const today = new Date().toDateString();
         const record = _getDailyRecord();
-        
-        if (record.lastDate === today && record.popupCount >= record.maxPopups) {
-            console.log('[梦向问卷] 今日弹出次数已达上限（' + record.maxPopups + '次），跳过');
-            return;
-        }
-        
+
+        if (record.lastDate === today && record.popupCount >= record.maxPopups) return;
+
         const allQ = _getAllQuestions();
-        if (allQ.length === 0) {
-            console.log('[梦向问卷] 没有问题池');
-            return;
-        }
-        
+        if (allQ.length === 0) return;
+
         const question = _randomPick(allQ);
-        
+
         if (record.lastDate !== today) {
             record.lastDate = today;
             record.popupCount = 0;
             record.maxPopups = 2 + Math.floor(Math.random() * 3);
-            console.log('[梦向问卷] 新的一天，今日将随机弹出 ' + record.maxPopups + ' 次');
         }
         record.popupCount = (record.popupCount || 0) + 1;
         _setDailyRecord(record);
-        
-        console.log('[梦向问卷] 触发每日弹出（第 ' + record.popupCount + '/' + record.maxPopups + ' 次）:', question.q);
+
         _showSurveyModal(question, true);
     }
 
@@ -567,7 +577,7 @@
     }
 
     // =============================================
-    // 7. 添加问卷池（单题编辑器）
+    // 7. 添加问卷池
     // =============================================
     function openSingleQuestionEditor() {
         var old = document.getElementById('dream-single-editor');
@@ -908,6 +918,7 @@
 
         var qId = q.id;
         setTimeout(function() {
+            if (!window.SESSION_ID) return;
             var currentList = _getQuestionnaires();
             var currentQ = null;
             for (var ci = 0; ci < currentList.length; ci++) {
@@ -917,7 +928,7 @@
                 console.warn('[梦向问卷] 问卷已被删除:', qId);
                 return;
             }
-            
+
             var answers = {};
             for (var qi = 0; qi < currentQ.questions.length; qi++) {
                 var question = currentQ.questions[qi];
@@ -939,7 +950,7 @@
                     answers[question.id] = picked.join('');
                 }
             }
-            
+
             var finalList = _getQuestionnaires();
             var finalQ = null;
             for (var fi = 0; fi < finalList.length; fi++) {
@@ -990,10 +1001,10 @@
         var inner = document.createElement('div');
         inner.style.cssText = 'background:var(--primary-bg);border-radius:20px;padding:24px;width:min(440px, 92vw);max-height:80vh;overflow-y:auto;border:1px solid var(--border-color);';
         var html = '<div style="display:flex;justify-content:space-between;margin-bottom:12px;"><span style="font-size:18px;font-weight:700;">📋 ' + _esc(q.title) + '</span><button id="reply-close" style="background:none;border:none;font-size:20px;cursor:pointer;">✕</button></div>';
-        
+
         var pName = _getPartnerName();
         html += '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:14px;">💕 ' + pName + ' 的回答：</div>';
-        
+
         for (var qi = 0; qi < q.questions.length; qi++) {
             var question = q.questions[qi];
             var answer = q.answers[question.id] || '未回答';
@@ -1008,14 +1019,18 @@
     }
 
     // =============================================
-    // 11. 初始化 - 每天随机2~4次弹出
+    // 11. 初始化（等 SESSION_ID 就绪后再跑）
     // =============================================
-    function _init() {
+    let _surveyInterval = null;
+
+    function _startSurveyLoop() {
+        if (_surveyInterval) return;
+
         console.log('[梦向问卷] 初始化中...（默认字卡库已加载，共 ' + DEFAULT_REPLY_CARDS.length + ' 条）');
-        
+
         var record = _getDailyRecord();
         var today = new Date().toDateString();
-        
+
         if (record.lastDate !== today || !record.popupTimes || record.popupTimes.length === 0) {
             var count = 2 + Math.floor(Math.random() * 3);
             var times = [];
@@ -1028,44 +1043,34 @@
             times.sort(function(a, b) {
                 return (a.hour * 3600 + a.minute * 60 + a.second) - (b.hour * 3600 + b.minute * 60 + b.second);
             });
-            
+
             record.lastDate = today;
             record.popupTimes = times;
             record.popupCount = 0;
             record.maxPopups = count;
             _setDailyRecord(record);
-            
-            console.log('[梦向问卷] 今日将随机弹出 ' + count + ' 次，时间点：');
-            times.forEach(function(t, idx) {
-                console.log('  ' + (idx+1) + '. ' + String(t.hour).padStart(2,'0') + ':' + String(t.minute).padStart(2,'0') + ':' + String(t.second).padStart(2,'0'));
-            });
-        } else {
-            console.log('[梦向问卷] 今日已有弹出计划，剩余 ' + (record.maxPopups - record.popupCount) + ' 次');
         }
-        
-        setInterval(function() {
+
+        _surveyInterval = setInterval(function() {
+            if (!window.SESSION_ID) return;
             var now = new Date();
             var rec = _getDailyRecord();
             var todayStr = now.toDateString();
-            
+
             if (rec.lastDate !== todayStr) {
-                console.log('[梦向问卷] 跨天，重新生成弹出计划');
-                _init();
+                _startSurveyLoop();
                 return;
             }
-            
-            if (rec.popupCount >= rec.maxPopups) {
-                return;
-            }
-            
+
+            if (rec.popupCount >= rec.maxPopups) return;
+
             var currentSeconds = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
-            
+
             if (rec.popupTimes && rec.popupTimes.length > 0) {
                 var nextTime = rec.popupTimes[rec.popupCount];
                 if (nextTime) {
                     var targetSeconds = nextTime.hour * 3600 + nextTime.minute * 60 + nextTime.second;
                     if (currentSeconds >= targetSeconds && currentSeconds - targetSeconds < 60) {
-                        console.log('[梦向问卷] 到达弹出时间点！');
                         _checkDailyPopup();
                     }
                 }
@@ -1073,16 +1078,37 @@
         }, 60000);
     }
 
+    function _waitForSession() {
+        if (window.SESSION_ID) {
+            _startSurveyLoop();
+            return;
+        }
+        let tries = 0;
+        const t = setInterval(() => {
+            tries++;
+            if (window.SESSION_ID) {
+                clearInterval(t);
+                _startSurveyLoop();
+            } else if (tries > 100) {
+                clearInterval(t);
+                console.warn('[梦向问卷] 等待 SESSION_ID 超时，问卷系统未能启动');
+            }
+        }, 100);
+    }
+
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', _init);
+        document.addEventListener('DOMContentLoaded', _waitForSession);
     } else {
-        _init();
+        _waitForSession();
     }
 
     // =============================================
     // 12. 暴露全局方法
     // =============================================
-    window.forceCheckDailySurvey = _checkDailyPopup;
+    window.forceCheckDailySurvey = function() {
+        if (!window.SESSION_ID) return;
+        _checkDailyPopup();
+    };
     window.viewDreamHistory = function() {
         try {
             var h = _getHistory();
@@ -1114,5 +1140,5 @@
         }
     };
 
-    console.log('[梦向问卷] 完整系统已加载（每日随机弹出2~4次，所有消息禁止引用，默认字卡库 ' + DEFAULT_REPLY_CARDS.length + ' 条）');
+    console.log('[梦向问卷] 模块已加载（等待 SESSION_ID 就绪后启动）');
 })();
