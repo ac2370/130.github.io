@@ -1,4 +1,20 @@
-// heart-market.js - 心意集市（内置心意柜 · 送礼只走聊天 · 多角色隔离版 · 对方主动送礼）
+// heart-market.js - 心意集市（内置心意柜 · 送礼/红包只走聊天 · 多角色隔离版 · 对方主动送礼/发红包）
+
+/* ============================================================
+   【本次修改说明】
+   1. 对方主动送礼：一天内触发概率固定 40%，触发时刻为"当天剩余时间"里的
+      随机时间点（一天之内随机，不是固定时刻），每天最多触发 1 次；
+      并有防重复定时器保护，同一页面多次打开心意柜不会重复挂定时器，
+      不会扎堆在同一时间送出一堆礼物。
+   2. 新增「双方互发红包」：
+      - 我 → 对方：心意市集顶部新增 🧧 红包按钮，选择群成员、输入心意币
+        金额、可填祝福语；确认后从我的心意币扣除并加到对方钱包，
+        聊天框里发出一条红包消息，对方延迟后用字卡回复。
+      - 对方 → 我：对方每天以 25% 概率（REDPACKET_DAILY_PROB 可调）在当天
+        随机时间主动发一个红包给我（从对方钱包扣、加到我的钱包），同样走
+        聊天框、每天最多 1 次、有防重复定时器。
+   3. 其余功能（礼物分类/自定义商品/搜索/钱包/签到/群成员/心意柜）保持原样。
+   ============================================================ */
 (function() {
     'use strict';
 
@@ -7,6 +23,20 @@
     var SIGNIN_KEY = 'heart_market_signin';
     var CUSTOM_KEY = 'heart_market_custom_items';
     var PARTNER_GIFT_KEY = 'heart_market_partner_gift_daily';
+    var PARTNER_REDPACKET_KEY = 'heart_market_partner_redpacket_daily';
+
+    // 对方每天主动发红包的概率（0~1，可自行调整；默认 25%）
+    var REDPACKET_DAILY_PROB = 0.25;
+
+    // 对方主动发红包的金额范围（单位：分）：5.20 ~ 52.00 心意币
+    var REDPACKET_MIN_FEN = 520;
+    var REDPACKET_MAX_FEN = 5200;
+
+    // 对方每日主动送礼的定时器句柄（防重复定时器，避免同一时刻扎堆触发多份礼物）
+    var _partnerGiftTimer = null;
+
+    // 对方每日主动发红包的定时器句柄（同样防重复）
+    var _partnerRpTimer = null;
 
     // 安全获取隔离键
     function _sk(key) {
@@ -158,6 +188,9 @@
         else alert(msg);
     }
     function _fmtMoney(fen) { return '¥' + (fen / 100).toFixed(2); }
+
+    // 红包专用金额显示：明确标注"心意币"，避免与人民币混淆（红包里的钱就是心意币）
+    function _fmtRpMoney(fen) { return (fen / 100).toFixed(2) + ' 心意币'; }
     function _generateId() { return Date.now() + '_' + Math.random().toString(36).substr(2, 6); }
     function _formatTime(iso) {
         var date = new Date(iso);
@@ -218,13 +251,14 @@
     }
     function _setPartnerGiftDaily(o) { localStorage.setItem(_sk(PARTNER_GIFT_KEY), JSON.stringify(o)); }
 
-    // 检查并触发对方送礼（一天内 40% 概率）
+    // 检查并触发对方送礼（每天 40% 概率，全天随机时刻，一天只送一次，绝不扎堆）
     function _maybeTriggerPartnerGift() {
         var today = new Date().toDateString();
         var record = _getPartnerGiftDaily();
 
-        // 已经跨天了，重置当日记录
+        // 已经跨天了，重置当日记录（并清掉昨天的旧定时器，防止残留定时器扎堆触发）
         if (record.lastDate !== today) {
+            if (_partnerGiftTimer) { clearTimeout(_partnerGiftTimer); _partnerGiftTimer = null; }
             record.lastDate = today;
             record.rolled = false;        // 今日是否已经判定过 40%
             record.triggered = false;     // 今日是否已经触发过
@@ -233,16 +267,23 @@
             _setPartnerGiftDaily(record);
         }
 
-        // 今日已经触发过，不再触发
+        // 今日已经触发过，不再触发（一天只送一次，绝不扎堆）
         if (record.triggered) return;
 
-        // 第一次打开心意柜，掷一次 40% 判定
+        // 记录当前角色（多角色隔离：礼物消息会写入该角色自己的存储池，切走后不串框）
+        record.roleId = (typeof _currentContactId === 'function') ? _currentContactId() : (window.currentContactId || window.SESSION_ID || '');
+        _setPartnerGiftDaily(record);
+
+        // 第一次检查，掷一次 40% 判定
         if (!record.rolled) {
             record.rolled = true;
             if (Math.random() < 0.40) {
-                // 安排一个 0~180 分钟后的随机触发时刻
-                var delayMs = Math.floor(Math.random() * 180 * 60 * 1000);
-                record.triggerTime = Date.now() + delayMs;
+                // 触发时刻 = 现在 到 今天 23:59:59 之间的随机时间点（一天之内的随机时间，不是固定点）
+                var nowMs = Date.now();
+                var endOfDay = new Date();
+                endOfDay.setHours(23, 59, 59, 999);
+                var windowMs = Math.max(1000, endOfDay.getTime() - nowMs);
+                record.triggerTime = nowMs + Math.floor(Math.random() * windowMs);
                 record.timerStarted = true;
                 _setPartnerGiftDaily(record);
                 console.log('[心意集市] 今日对方将主动送礼物，触发时间：', new Date(record.triggerTime).toLocaleTimeString());
@@ -253,17 +294,20 @@
             }
         }
 
-        // 若已安排触发，则挂载定时器
+        // 若已安排触发，则挂载定时器（先清掉旧的，确保同一时刻只有一个定时器，不会扎堆）
         if (record.timerStarted && !record.triggered) {
+            if (_partnerGiftTimer) { clearTimeout(_partnerGiftTimer); _partnerGiftTimer = null; }
             var now = Date.now();
             var remain = record.triggerTime - now;
             if (remain <= 0) {
+                // 触发时刻已过（例如深夜才打开页面）：立即补送一次
+                _partnerGiftTimer = null;
                 _doPartnerGift();
             } else {
-                // 用一个一次性定时器（不刷新页面，最长等待 3 小时）
-                setTimeout(function() {
+                _partnerGiftTimer = setTimeout(function() {
+                    _partnerGiftTimer = null;
                     _doPartnerGift();
-                }, Math.min(remain, 3 * 60 * 60 * 1000));
+                }, remain);
             }
         }
     }
@@ -316,9 +360,10 @@
             ts: Date.now()
         });
 
-        // 6) 聊天里推送一条消息
+        // 6) 聊天里推送一条消息（带角色锁：即使切到别的角色，也写入送礼角色自己的存储池，不串框）
         if (typeof addMessage === 'function') {
             try {
+                var giftRoleId = record.roleId || ((typeof _currentContactId === 'function') ? _currentContactId() : '');
                 addMessage({
                     id: _generateId(),
                     sender: 'partner',
@@ -326,8 +371,9 @@
                     timestamp: new Date(),
                     type: 'normal',
                     status: 'received',
-                    quotable: false
-                });
+                    quotable: false,
+                    contactId: giftRoleId || undefined
+                }, { silent: true });
                 if (typeof playSound === 'function') playSound('message');
             } catch(e) { console.warn('对方送礼 addMessage 失败', e); }
         }
@@ -336,6 +382,146 @@
             showNotification('💝 ' + member.name + ' 送了你一份礼物：' + (item.emoji || '🎁') + ' ' + item.name, 'success', 4000);
         }
         console.log('[心意集市] 对方主动送礼完成：', member.name, item.name);
+    }
+
+    // =============================================
+    // 对方每日主动发红包（新增：双方心意币互发红包 · 对方 → 我）
+    // =============================================
+    function _getPartnerRedpacketDaily() {
+        try { return JSON.parse(localStorage.getItem(_sk(PARTNER_REDPACKET_KEY))) || {}; }
+        catch(e) { return {}; }
+    }
+    function _setPartnerRedpacketDaily(o) { localStorage.setItem(_sk(PARTNER_REDPACKET_KEY), JSON.stringify(o)); }
+
+    // 检查并触发对方主动发红包（每天 REDPACKET_DAILY_PROB 概率，当天随机时刻，一天最多 1 次）
+    function _maybeTriggerPartnerRedPacket() {
+        var today = new Date().toDateString();
+        var record = _getPartnerRedpacketDaily();
+
+        // 跨天重置（并清掉昨天的旧定时器，防止残留定时器重复触发）
+        if (record.lastDate !== today) {
+            if (_partnerRpTimer) { clearTimeout(_partnerRpTimer); _partnerRpTimer = null; }
+            record.lastDate = today;
+            record.rolled = false;
+            record.triggered = false;
+            record.timerStarted = false;
+            record.triggerTime = 0;
+            _setPartnerRedpacketDaily(record);
+        }
+
+        if (record.triggered) return;
+
+        record.roleId = (typeof _currentContactId === 'function') ? _currentContactId() : (window.currentContactId || window.SESSION_ID || '');
+        _setPartnerRedpacketDaily(record);
+
+        // 第一次检查：掷一次概率判定
+        if (!record.rolled) {
+            record.rolled = true;
+            if (Math.random() < REDPACKET_DAILY_PROB) {
+                // 触发时刻 = 现在 到 今天 23:59:59 之间的随机时间点（一天之内的随机时间）
+                var nowMs = Date.now();
+                var endOfDay = new Date();
+                endOfDay.setHours(23, 59, 59, 999);
+                var windowMs = Math.max(1000, endOfDay.getTime() - nowMs);
+                record.triggerTime = nowMs + Math.floor(Math.random() * windowMs);
+                record.timerStarted = true;
+                _setPartnerRedpacketDaily(record);
+                console.log('[心意集市] 今日对方将主动发红包，触发时间：', new Date(record.triggerTime).toLocaleTimeString());
+            } else {
+                console.log('[心意集市] 今日对方未触发主动发红包');
+                _setPartnerRedpacketDaily(record);
+                return;
+            }
+        }
+
+        // 挂载定时器（先清旧的，同一时刻只有一个，不会扎堆）
+        if (record.timerStarted && !record.triggered) {
+            if (_partnerRpTimer) { clearTimeout(_partnerRpTimer); _partnerRpTimer = null; }
+            var now = Date.now();
+            var remain = record.triggerTime - now;
+            if (remain <= 0) {
+                _partnerRpTimer = null;
+                _doPartnerRedPacket();
+            } else {
+                _partnerRpTimer = setTimeout(function() {
+                    _partnerRpTimer = null;
+                    _doPartnerRedPacket();
+                }, remain);
+            }
+        }
+    }
+
+    // 对方主动发红包的核心逻辑
+    function _doPartnerRedPacket() {
+        var record = _getPartnerRedpacketDaily();
+        var today = new Date().toDateString();
+        if (record.lastDate !== today) return;
+        if (record.triggered) return;
+        record.triggered = true;
+        _setPartnerRedpacketDaily(record);
+
+        // 1) 选一个群成员作为发红包的人（若没有群成员则跳过）
+        var members = _getGroupMembers();
+        if (members.length === 0) {
+            console.log('[心意集市] 无群成员，取消对方主动发红包');
+            return;
+        }
+        var member = members[Math.floor(Math.random() * members.length)];
+
+        // 2) 随机金额（5.20~52.00 心意币），对方钱包不够时按剩余金额发
+        var wallet = _getWallet();
+        var amountFen = REDPACKET_MIN_FEN + Math.floor(Math.random() * (REDPACKET_MAX_FEN - REDPACKET_MIN_FEN + 1));
+        if (wallet.partnerBalance < 100) {
+            console.log('[心意集市] 对方心意币不足，跳过主动发红包');
+            return;
+        }
+        if (wallet.partnerBalance < amountFen) amountFen = Math.max(100, wallet.partnerBalance);
+
+        // 3) 对方钱包扣钱，我的钱包加钱
+        wallet.partnerBalance -= amountFen;
+        wallet.myBalance += amountFen;
+        _setWallet(wallet);
+
+        // 4) 祝福语：从字卡抽 2~4 条随机拼凑
+        var blessing = _genWords(2 + Math.floor(Math.random() * 3));
+
+        // 5) 聊天里发一条红包消息（带角色锁：即使切到别的角色，也写入当前角色自己的存储池，不串框）
+        if (typeof addMessage === 'function') {
+            try {
+                var rpRoleId = record.roleId || ((typeof _currentContactId === 'function') ? _currentContactId() : '');
+                addMessage({
+                    id: _generateId(),
+                    sender: 'partner',
+                    text: '🧧 我发给你一个红包\n' + _fmtRpMoney(amountFen) + '\n' + blessing,
+                    timestamp: new Date(),
+                    type: 'normal',
+                    status: 'received',
+                    quotable: false,
+                    contactId: rpRoleId || undefined
+                }, { silent: true });
+                if (typeof playSound === 'function') playSound('message');
+            } catch(e) { console.warn('对方发红包 addMessage 失败', e); }
+        }
+
+        // 6) 写入"收到的"历史（心意柜展示）
+        _addHistory({
+            id: _generateId(),
+            direction: 'received',
+            itemId: 'red_packet',
+            itemName: '红包',
+            itemEmoji: '🧧',
+            itemImage: '',
+            price: amountFen,
+            other: member.name,
+            note: blessing,
+            words: '',
+            ts: Date.now()
+        });
+
+        if (typeof showNotification === 'function') {
+            showNotification('🧧 ' + member.name + ' 发给你一个红包：' + _fmtRpMoney(amountFen), 'success', 4000);
+        }
+        console.log('[心意集市] 对方主动发红包完成：', member.name, _fmtMoney(amountFen));
     }
 
     // =============================================
@@ -434,14 +620,95 @@
     }
 
     // =============================================
+    // 发红包 → 只走聊天（我方发对方 · 双方心意币互发）
+    // =============================================
+    function _sendRedPacketToMember(memberName, amountFen, blessing) {
+        var historyId = _generateId();
+        var blessingText = blessing || _genWords(2 + Math.floor(Math.random() * 3));
+
+        // 1) 聊天里发一条"我发的红包"消息
+        if (typeof addMessage === 'function') {
+            try {
+                var rpMsg = '🧧 我发给你一个红包\n' + _fmtRpMoney(amountFen) + '\n' + blessingText;
+                addMessage({
+                    id: _generateId(),
+                    sender: 'user',
+                    text: rpMsg,
+                    timestamp: new Date(),
+                    type: 'normal',
+                    status: 'sent',
+                    quotable: false
+                });
+                if (typeof playSound === 'function') playSound('send');
+            } catch(e) { console.warn('发红包 addMessage 失败', e); }
+        }
+
+        // 2) 记录到历史（心意柜"送出的"用）
+        _addHistory({
+            id: historyId,
+            direction: 'sent',
+            itemId: 'red_packet',
+            itemName: '红包',
+            itemEmoji: '🧧',
+            itemImage: '',
+            price: amountFen,
+            other: memberName,
+            note: blessingText,
+            words: '',
+            reply: null,       // 待对方回复后填充
+            replyTs: null,
+            ts: Date.now()
+        });
+
+        // 3) 10~300 秒后对方回复（从字卡抽 2~4 条）
+        var delaySec = 10 + Math.random() * 290;
+        var delayMs = delaySec * 1000;
+        console.log('[心意集市] 对方将在 ' + Math.round(delaySec) + ' 秒后回复红包');
+        setTimeout(function() {
+            var replyText = _genWords(2 + Math.floor(Math.random() * 3));
+
+            if (typeof addMessage === 'function') {
+                try {
+                    addMessage({
+                        id: _generateId(),
+                        sender: 'partner',
+                        text: replyText,
+                        timestamp: new Date(),
+                        type: 'normal',
+                        status: 'received',
+                        quotable: false
+                    });
+                    if (typeof playSound === 'function') playSound('message');
+                } catch(e) { console.warn('对方回复红包 addMessage 失败', e); }
+            }
+
+            _updateHistoryById(historyId, {
+                reply: replyText,
+                replyTs: Date.now()
+            });
+
+            var cabinetContent = document.getElementById('hc-content');
+            if (cabinetContent) {
+                var evt = new Event('rerender-cabinet');
+                document.dispatchEvent(evt);
+            }
+
+            if (typeof showNotification === 'function') {
+                showNotification('💌 ' + memberName + ' 回复了你的红包', 'info', 3000);
+            }
+        }, delayMs);
+    }
+
+    // =============================================
     // 主界面
     // =============================================
     window.openHeartMarket = function() {
         var old = document.getElementById('heart-market-modal');
         if (old) old.remove();
 
-        // 打开时检查对方主动送礼
+        // 打开时检查对方主动送礼 / 主动发红包
         _maybeTriggerPartnerGift();
+        _maybeTriggerPartnerRedPacket();
 
         var currentCat = 'all';
         var searchText = '';
@@ -458,6 +725,7 @@
         header.innerHTML = '<button id="hm-back" style="background:none;border:none;font-size:16px;color:var(--text-secondary);cursor:pointer;padding:4px 8px;">←</button>' +
             '<span style="font-size:16px;font-weight:700;color:var(--text-primary);flex:1;">🎁 心意集市</span>' +
             '<button id="hm-cabinet-btn" style="background:none;border:none;font-size:13px;color:var(--accent-color);cursor:pointer;padding:4px 6px;font-weight:600;">🎀 心意柜</button>' +
+            '<button id="hm-rp-btn" style="background:none;border:none;font-size:13px;color:#ff6b6b;cursor:pointer;padding:4px 6px;font-weight:600;">🧧 红包</button>' +
             '<button id="hm-wallet-btn" style="background:none;border:none;font-size:13px;color:var(--accent-color);cursor:pointer;padding:4px 6px;font-weight:600;">💰 钱包</button>' +
             '<button id="hm-add-btn" style="background:var(--accent-color);border:none;font-size:12px;color:#fff;cursor:pointer;padding:5px 10px;border-radius:10px;font-weight:600;">➕ 添加</button>';
         inner.appendChild(header);
@@ -679,6 +947,12 @@
                             '</div>';
                     }
 
+                    // 红包记录：在礼物名下方显示金额
+                    var redPacketPriceHtml = '';
+                    if (h.itemId === 'red_packet') {
+                        redPacketPriceHtml = '<div style="font-size:15px;font-weight:700;color:#ff6b6b;margin-top:2px;">' + _fmtRpMoney(h.price || 0) + '</div>';
+                    }
+
                     html += '<div style="background:var(--primary-bg);border-radius:16px;padding:14px 16px;margin-bottom:12px;border:1px solid var(--border-color);box-shadow:0 1px 4px rgba(0,0,0,0.03);">' +
                         '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">' +
                             avatarHtml +
@@ -690,6 +964,7 @@
                         '<div style="display:flex;flex-direction:column;align-items:center;padding:12px 0;background:var(--secondary-bg);border-radius:12px;margin-bottom:10px;">' +
                             visualHtml +
                             '<div style="font-size:14px;font-weight:600;color:var(--text-primary);">' + _esc(h.itemName || '礼物') + '</div>' +
+                            redPacketPriceHtml +
                         '</div>' +
                         noteHtml +
                         wordsHtml +
@@ -1132,8 +1407,96 @@
             };
         }
 
+        // ===== 发红包弹窗（新增：我 → 群成员，心意币走聊天框） =====
+        function showRedPacketDialog() {
+            var oldDlg = document.getElementById('hm-rp-dialog');
+            if (oldDlg) oldDlg.remove();
+
+            var w = _getWallet();
+            var members = _getGroupMembers();
+            var memberOptions = '';
+            if (members.length === 0) {
+                memberOptions = '<div style="font-size:12px;color:#ff6b6b;padding:8px;text-align:center;">没有群成员，请先到"朋友圈 → 头像与昵称"里添加</div>';
+            } else {
+                memberOptions = '<div style="display:flex;gap:6px;flex-wrap:wrap;max-height:120px;overflow-y:auto;padding:4px 0;">';
+                for (var i = 0; i < members.length; i++) {
+                    var m = members[i];
+                    var av = m.avatar ? '<img src="' + _esc(m.avatar) + '" style="width:20px;height:20px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:4px;">' : '<span style="margin-right:4px;">🌸</span>';
+                    memberOptions += '<button class="hm-rp-member-btn" data-name="' + _esc(m.name) + '" style="padding:6px 10px;border-radius:16px;border:1px solid var(--border-color);background:var(--secondary-bg);color:var(--text-primary);font-size:12px;cursor:pointer;font-family:var(--font-family);display:flex;align-items:center;">' + av + _esc(m.name) + '</button>';
+                }
+                memberOptions += '</div>';
+            }
+
+            var dlg = document.createElement('div');
+            dlg.id = 'hm-rp-dialog';
+            dlg.style.cssText = 'position:fixed;inset:0;z-index:10070;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);';
+            dlg.innerHTML = '<div style="background:var(--primary-bg);border-radius:20px;padding:22px;width:min(360px,90vw);border:1px solid var(--border-color);max-height:85vh;overflow-y:auto;">' +
+                '<div style="text-align:center;font-size:38px;margin-bottom:4px;">🧧</div>' +
+                '<div style="text-align:center;font-size:17px;font-weight:700;color:var(--text-primary);margin-bottom:14px;">发红包</div>' +
+                '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">🎯 发给</div>' +
+                memberOptions +
+                '<div style="font-size:12px;color:var(--text-secondary);margin:12px 0 6px;">💰 金额（心意币）</div>' +
+                '<input id="hm-rp-amount" type="text" inputmode="decimal" placeholder="如 6.66 / 52.00" style="width:100%;padding:10px 12px;border:1px solid var(--border-color);border-radius:10px;background:var(--secondary-bg);color:var(--text-primary);font-size:13px;box-sizing:border-box;outline:none;">' +
+                '<div style="font-size:12px;color:var(--text-secondary);margin:12px 0 6px;">📝 祝福语（可留空，留空自动从字卡抽 2~4 条）</div>' +
+                '<textarea id="hm-rp-note" rows="2" maxlength="60" placeholder="想对 TA 说的话..." style="width:100%;padding:10px 12px;border:1px solid var(--border-color);border-radius:10px;background:var(--secondary-bg);color:var(--text-primary);font-size:13px;box-sizing:border-box;outline:none;resize:vertical;font-family:var(--font-family);"></textarea>' +
+                '<div style="font-size:11px;color:var(--text-secondary);margin-top:8px;">我的心意币：' + _fmtMoney(w.myBalance) + '</div>' +
+                '<div style="display:flex;gap:10px;margin-top:16px;">' +
+                '<button id="hm-rp-cancel" style="flex:1;padding:10px;border:1px solid var(--border-color);border-radius:12px;background:var(--secondary-bg);color:var(--text-secondary);font-size:13px;cursor:pointer;">取消</button>' +
+                '<button id="hm-rp-confirm" style="flex:2;padding:10px;border:none;border-radius:12px;background:var(--accent-color);color:#fff;font-size:13px;font-weight:700;cursor:pointer;">发出红包</button>' +
+                '</div>' +
+                '</div>';
+            document.body.appendChild(dlg);
+
+            var selectedMember = members.length > 0 ? members[0].name : '';
+            var memberBtns = dlg.querySelectorAll('.hm-rp-member-btn');
+            memberBtns.forEach(function(btn) {
+                if (btn.dataset.name === selectedMember) {
+                    btn.style.background = 'var(--accent-color)';
+                    btn.style.color = '#fff';
+                    btn.style.borderColor = 'var(--accent-color)';
+                }
+                btn.onclick = function() {
+                    memberBtns.forEach(function(b) {
+                        b.style.background = 'var(--secondary-bg)';
+                        b.style.color = 'var(--text-primary)';
+                        b.style.borderColor = 'var(--border-color)';
+                    });
+                    this.style.background = 'var(--accent-color)';
+                    this.style.color = '#fff';
+                    this.style.borderColor = 'var(--accent-color)';
+                    selectedMember = this.dataset.name;
+                };
+            });
+
+            dlg.querySelector('#hm-rp-cancel').onclick = function() { dlg.remove(); };
+            dlg.onclick = function(e) { if (e.target === dlg) dlg.remove(); };
+
+            dlg.querySelector('#hm-rp-confirm').onclick = function() {
+                if (!selectedMember) { _notify('请先添加群成员', 'warning'); return; }
+                var amountStr = dlg.querySelector('#hm-rp-amount').value.trim();
+                if (!amountStr) { _notify('请输入红包金额', 'warning'); return; }
+                var num = parseFloat(amountStr);
+                if (isNaN(num) || num <= 0) { _notify('金额需大于 0', 'warning'); return; }
+                var fen = Math.round(num * 100);
+                var ww = _getWallet();
+                if (ww.myBalance < fen) { _notify('心意币不足', 'warning'); return; }
+                var blessing = dlg.querySelector('#hm-rp-note').value.trim();
+
+                // 我的心意币扣除，TA 的钱包到账（互发红包）
+                ww.myBalance -= fen;
+                ww.partnerBalance += fen;
+                _setWallet(ww);
+
+                _sendRedPacketToMember(selectedMember, fen, blessing);
+                dlg.remove();
+                refreshBalance();
+                _notify('已发红包 ' + _fmtRpMoney(fen) + ' 给 ' + selectedMember, 'success');
+            };
+        }
+
         document.getElementById('hm-back').onclick = function() { wrap.remove(); };
         document.getElementById('hm-cabinet-btn').onclick = showCabinetDialog;
+        document.getElementById('hm-rp-btn').onclick = showRedPacketDialog;
         document.getElementById('hm-wallet-btn').onclick = showWalletDialog;
         document.getElementById('hm-add-btn').onclick = showAddDialog;
         document.getElementById('hm-search').oninput = function() {
@@ -1146,7 +1509,7 @@
         refreshBalance();
     };
 
-    console.log('[心意集市] 模块已加载（内置心意柜 · 送礼走聊天 · 多角色隔离 · 对方主动送礼）');
+    console.log('[心意集市] 模块已加载（内置心意柜 · 送礼/红包走聊天 · 多角色隔离 · 对方主动送礼/发红包）');
 })();
 
 window.initHeartMarket = function() {
