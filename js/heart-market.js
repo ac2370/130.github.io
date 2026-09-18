@@ -51,6 +51,19 @@
     }
 
     // =============================================
+    // 注入 CSS：红包卡片不套聊天气泡背景（独立显示，不套一圈聊天框）
+    // =============================================
+    (function injectRedPacketStyle() {
+        try {
+            if (document.getElementById('hm-rp-style')) return;
+            var style = document.createElement('style');
+            style.id = 'hm-rp-style';
+            style.textContent = '.message:has(.hm-rp-wrap){background:transparent!important;background-color:transparent!important;padding:0!important;border:none!important;box-shadow:none!important;}.message:has(.hm-rp-wrap)::before,.message:has(.hm-rp-wrap)::after{content:none!important;}';
+            (document.head || document.documentElement).appendChild(style);
+        } catch(e) { console.warn('[心意集市] 红包样式注入失败', e); }
+    })();
+
+    // =============================================
     // 群成员读取（隔离）
     // =============================================
     function _getGroupMembers() {
@@ -212,7 +225,7 @@
         var clickAttr = clickable ? ' onclick="window._hmClaimRp(\'' + msgId + '\')"' : '';
         var dim = claimed ? 'opacity:0.85;' : '';
 
-        return '<div' + clickAttr + ' data-hm-rp="1" data-msg-id="' + msgId + '" style="width:230px;max-width:100%;border-radius:14px;overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,0.18);cursor:' + cursor + ';">'
+        return '<div class="hm-rp-wrap"' + clickAttr + ' data-hm-rp="1" data-msg-id="' + msgId + '" style="width:230px;max-width:100%;border-radius:14px;overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,0.18);cursor:' + cursor + ';">'
             + '<div style="background:' + bg + ';padding:14px 16px;display:flex;align-items:center;gap:12px;">'
                 + '<div style="width:40px;height:40px;border-radius:10px;background:rgba(255,255,255,0.18);display:flex;align-items:center;justify-content:center;flex-shrink:0;">'
                     + '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>'
