@@ -1229,10 +1229,6 @@ const LIBRARY_CONFIG = {
 
             { id: 'statuses', name: '对方状态', mode: 'list' },
 
-            { id: 'surveyBank', name: '问卷题库', mode: 'list' },
-
-            { id: 'period', name: '经期', mode: 'list' },
-
             { id: 'mottos', name: '顶部格言', mode: 'list' },
 
             { id: 'intros', name: '开场动画', mode: 'list' }
@@ -1883,7 +1879,9 @@ const updateUI = () => {
 
     }
 
-    DOMElements.html.setAttribute('data-theme', window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    // 【修复】全局夜/昼模式以 settings.isDarkMode 为准（theme-toggle 月亮按钮切换的就是它），
+    // 不能写死跟随系统偏好，否则点击月亮图标无任何视觉变化
+    DOMElements.html.setAttribute('data-theme', settings.isDarkMode ? 'dark' : 'light');
 
     DOMElements.partner.name.textContent = settings.partnerName;
 
@@ -3796,8 +3794,10 @@ async function _loadOriginReplyData(contactId) {
 
 window.simulateReply = async function(originContactId) {
 
-    // 没传就默认当前角色
-    if (!originContactId) originContactId = _currentContactId();
+    // 【修复】continue-btn 等按钮直接把 simulateReply 作为 click 回调时，
+    // 浏览器会把 MouseEvent 对象当作第一个参数传进来；这里只接受字符串角色 ID，
+    // 其他一律视为"未指定"→ 用当前角色（否则会被当成陌生角色 ID，回复库读空 → 点击无响应）
+    if (typeof originContactId !== 'string' || !originContactId) originContactId = _currentContactId();
 
     const isSameContact = (originContactId === _currentContactId());
 
@@ -5400,6 +5400,11 @@ window.switchActiveContact = async function(nextRole, nextName) {
 
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
 
+    // 系统主题变化时同步设置项与界面，保证与 settings.isDarkMode 始终一致
+    settings.isDarkMode = e.matches;
+
     document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
+
+    throttledSaveData();
 
 });
