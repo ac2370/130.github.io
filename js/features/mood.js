@@ -230,16 +230,26 @@ let customMoodSelectedColor = '#FFD93D';
 const CUSTOM_MOOD_COLORS = ['#FFD93D','#FF6B6B','#6BCB77','#4D96FF','#8D9EFF','#FF9A8B','#A8D8EA','#E0C3FC','#B8A9C9','#2C3E50'];
 
 async function initMoodData() {
+    // 【关键】先清空内存，防止旧角色数据残留
+    moodData = {};
+    customMoodOptions = [];
+    moodTrash = [];
+
     const savedMoods = await localforage.getItem(getStorageKey('moodCalendar'));
     if (savedMoods) { moodData = savedMoods; }
     const savedCustomMoods = await localforage.getItem(getStorageKey('customMoodOptions'));
     if (savedCustomMoods) { customMoodOptions = savedCustomMoods; }
     const savedTrash = await localforage.getItem(getStorageKey('moodTrash'));
     if (savedTrash && Array.isArray(savedTrash)) { moodTrash = savedTrash; }
+
     window.moodData = moodData;
     window.moodTrash = moodTrash;
+    window.customMoodOptions = customMoodOptions;
+
     checkPartnerDailyMood();
 }
+// 【关键】挂到 window 上，供 core.js 的 switchActiveContact 调用
+window.initMoodData = initMoodData;
 function checkPartnerDailyMood() {
     const today = new Date();
     const dateStr = formatDateStr(today);
@@ -281,12 +291,13 @@ function saveMoodData() {
     }
 }
 function saveCustomMoodOptions() {
+    window.customMoodOptions = customMoodOptions;
     localforage.setItem(getStorageKey('customMoodOptions'), customMoodOptions);
 }
 
 function saveMoodTrash() {
-    localforage.setItem(getStorageKey('moodTrash'), moodTrash).catch(() => {});
     window.moodTrash = moodTrash;
+    localforage.setItem(getStorageKey('moodTrash'), moodTrash).catch(() => {});
 }
 function getAllMoodOptions() {
     return [...MOOD_OPTIONS, ...customMoodOptions];
