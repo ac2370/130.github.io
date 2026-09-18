@@ -2261,3 +2261,581 @@ window.switchActiveContact = async function(nextRole, nextName) {
         showNotification(`已切换至 ${nextName} ✦`, 'success', 1500);
     }
 };
+
+// ============================================================
+// showModal / hideModal / viewImage
+// ============================================================
+function showModal(modalElement, focusElement = null) {
+    if (modalElement._hideTimeout) {
+        clearTimeout(modalElement._hideTimeout);
+        modalElement._hideTimeout = null;
+    }
+    modalElement.style.display = 'flex';
+    requestAnimationFrame(() => {
+        const content = modalElement.querySelector('.modal-content');
+        if (content) {
+            content.style.opacity = '1';
+            content.style.transform = 'translateY(0) scale(1)';
+        }
+        if (focusElement) {
+            setTimeout(() => focusElement.focus(), 100);
+        }
+    });
+}
+
+function hideModal(modalElement) {
+    const content = modalElement.querySelector('.modal-content');
+    if (content) {
+        content.style.opacity = '0';
+        content.style.transform = 'translateY(20px) scale(0.95)';
+    }
+    if (modalElement._hideTimeout) clearTimeout(modalElement._hideTimeout);
+    modalElement._hideTimeout = setTimeout(() => {
+        modalElement.style.display = 'none';
+    }, 300);
+}
+
+async function viewImage(src) {
+    let displaySrc = src;
+    let downloadHref = src;
+    if (typeof src === 'string' && src.indexOf('oss://') === 0) {
+        if (!window.CloudMedia) return;
+        try {
+            displaySrc = await window.CloudMedia.fetchUrl(src);
+            downloadHref = displaySrc;
+        } catch (e) {
+            if (typeof showNotification === 'function') showNotification('图片加载失败', 'error');
+            return;
+        }
+    } else if (typeof src === 'string' && src.indexOf('pending://') === 0) {
+        if (!window.CloudMedia) return;
+        const base64 = await window.CloudMedia.getPendingBase64(src);
+        if (!base64) {
+            if (typeof showNotification === 'function') showNotification('图片仍在准备中', 'info');
+            return;
+        }
+        displaySrc = base64;
+        downloadHref = base64;
+    }
+    const modal = document.createElement('div');
+    modal.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.92);display:flex;align-items:center;justify-content:center;animation:fadeIn 0.2s ease;touch-action:pinch-zoom;';
+    modal.innerHTML = `
+        <div style="position:relative;max-width:95vw;max-height:92vh;display:flex;align-items:center;justify-content:center;">
+            <img src="${displaySrc}" style="max-width:95vw;max-height:88vh;object-fit:contain;display:block;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,0.6);" draggable="false">
+            <button onclick="this.closest('[style*=fixed]').remove()" style="position:fixed;top:16px;right:16px;width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,0.15);border:1.5px solid rgba(255,255,255,0.3);color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);z-index:10;line-height:1;">×</button>
+            <a href="${downloadHref}" download style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:10px 24px;background:rgba(255,255,255,0.15);border:1.5px solid rgba(255,255,255,0.3);border-radius:20px;color:#fff;font-size:13px;text-decoration:none;backdrop-filter:blur(8px);display:flex;align-items:center;gap:6px;"><i class="fas fa-download"></i> 保存图片</a>
+        </div>`;
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal || e.target.tagName === 'IMG') modal.remove();
+    });
+    document.body.appendChild(modal);
+}
+
+// ============================================================
+// exportChatHistory / fallbackExport / importChatHistory
+// ============================================================
+async function exportChatHistory() {
+    let _diaryForExport = [];
+    let _moodForExport = null;
+    let _customMoodOptionsForExport = [];
+    try {
+        const _allKeys = await localforage.keys();
+        const _diaryKey = _allKeys.find(k => k.includes('companionDiary') && !k.includes('Bg') && !k.includes('Gallery'));
+        if (_diaryKey) _diaryForExport = (await localforage.getItem(_diaryKey)) || [];
+        const _moodKey = _allKeys.find(k => k.includes('moodCalendar'));
+        if (_moodKey) _moodForExport = (await localforage.getItem(_moodKey)) || {};
+        const _moodOptsKey = _allKeys.find(k => k.includes('customMoodOptions'));
+        if (_moodOptsKey) _customMoodOptionsForExport = (await localforage.getItem(_moodOptsKey)) || [];
+    } catch(e) { _diaryForExport = []; _moodForExport = {}; }
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.55);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;animation:fadeIn 0.2s ease;';
+    overlay.innerHTML = `
+        <div style="background:var(--secondary-bg);border-radius:20px;padding:24px;width:88%;max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.4);animation:modalContentSlideIn 0.3s ease forwards;">
+            <div style="font-size:15px;font-weight:700;color:var(--text-primary);margin-bottom:6px;display:flex;align-items:center;gap:8px;">
+                <i class="fas fa-file-export" style="color:var(--accent-color);font-size:14px;"></i>选择导出内容
+            </div>
+            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:16px;">勾选需要导出的数据模块</div>
+            <div style="display:flex;flex-direction:column;gap:9px;margin-bottom:20px;">
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-color);border-radius:12px;background:var(--primary-bg);font-size:13px;color:var(--text-primary);transition:border-color 0.2s;">
+                    <input type="checkbox" id="_exp_msgs" checked style="accent-color:var(--accent-color);width:15px;height:15px;">
+                    <i class="fas fa-comments" style="color:var(--accent-color);width:16px;text-align:center;"></i>
+                    <span>聊天记录 <span style="font-size:11px;color:var(--text-secondary);">(${messages.length} 条)</span></span>
+                </label>
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-color);border-radius:12px;background:var(--primary-bg);font-size:13px;color:var(--text-primary);transition:border-color 0.2s;">
+                    <input type="checkbox" id="_exp_settings" checked style="accent-color:var(--accent-color);width:15px;height:15px;">
+                    <i class="fas fa-sliders-h" style="color:var(--accent-color);width:16px;text-align:center;"></i>
+                    <span>外观与聊天设置</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-color);border-radius:12px;background:var(--primary-bg);font-size:13px;color:var(--text-primary);transition:border-color 0.2s;">
+                    <input type="checkbox" id="_exp_replies" style="accent-color:var(--accent-color);width:15px;height:15px;">
+                    <i class="fas fa-reply" style="color:var(--accent-color);width:16px;text-align:center;"></i>
+                    <span>字卡回复库</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-color);border-radius:12px;background:var(--primary-bg);font-size:13px;color:var(--text-primary);transition:border-color 0.2s;">
+                    <input type="checkbox" id="_exp_ann" style="accent-color:var(--accent-color);width:15px;height:15px;">
+                    <i class="fas fa-calendar-heart" style="color:var(--accent-color);width:16px;text-align:center;"></i>
+                    <span>纪念日 / 倒计时</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-color);border-radius:12px;background:var(--primary-bg);font-size:13px;color:var(--text-primary);transition:border-color 0.2s;">
+                    <input type="checkbox" id="_exp_themes" style="accent-color:var(--accent-color);width:15px;height:15px;">
+                    <i class="fas fa-palette" style="color:var(--accent-color);width:16px;text-align:center;"></i>
+                    <span>自定义主题配色</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-color);border-radius:12px;background:var(--primary-bg);font-size:13px;color:var(--text-primary);transition:border-color 0.2s;">
+                    <input type="checkbox" id="_exp_diary" style="accent-color:var(--accent-color);width:15px;height:15px;">
+                    <i class="fas fa-book-open" style="color:var(--accent-color);width:16px;text-align:center;"></i>
+                    <span>陪伴日记 <span style="font-size:11px;color:var(--text-secondary);">(${_diaryForExport.length} 条)</span></span>
+                </label>
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-color);border-radius:12px;background:var(--primary-bg);font-size:13px;color:var(--text-primary);transition:border-color 0.2s;">
+                    <input type="checkbox" id="_exp_mood" style="accent-color:var(--accent-color);width:15px;height:15px;">
+                    <i class="fas fa-face-smile" style="color:var(--accent-color);width:16px;text-align:center;"></i>
+                    <span>心情手账 <span style="font-size:11px;color:var(--text-secondary);">(${Object.keys(_moodForExport || {}).length} 天)</span></span>
+                </label>
+            </div>
+            <div style="display:flex;gap:10px;">
+                <button id="_exp_cancel" style="flex:1;padding:11px;border:1px solid var(--border-color);border-radius:12px;background:none;color:var(--text-secondary);font-size:13px;cursor:pointer;font-family:var(--font-family);">取消</button>
+                <button id="_exp_confirm" style="flex:2;padding:11px;border:none;border-radius:12px;background:var(--accent-color);color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font-family);display:flex;align-items:center;justify-content:center;gap:7px;">
+                    <i class="fas fa-download"></i>确认导出
+                </button>
+            </div>
+        </div>`;
+    document.body.appendChild(overlay);
+
+    function closeDialog() { overlay.remove(); }
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeDialog(); });
+    const _expCancelBtn = document.getElementById('_exp_cancel');
+    const _expConfirmBtn = document.getElementById('_exp_confirm');
+    if (_expCancelBtn) _expCancelBtn.onclick = closeDialog;
+
+    if (_expConfirmBtn) _expConfirmBtn.onclick = function() {
+        const inclMsgs     = !!document.getElementById('_exp_msgs')?.checked;
+        const inclSettings = !!document.getElementById('_exp_settings')?.checked;
+        const inclReplies  = !!document.getElementById('_exp_replies')?.checked;
+        const inclAnn      = !!document.getElementById('_exp_ann')?.checked;
+        const inclThemes   = !!document.getElementById('_exp_themes')?.checked;
+        const inclDiary    = !!document.getElementById('_exp_diary')?.checked;
+        const inclMood     = !!document.getElementById('_exp_mood')?.checked;
+
+        if (!inclMsgs && !inclSettings && !inclReplies && !inclAnn && !inclThemes && !inclDiary && !inclMood) {
+            showNotification('请至少选择一项导出内容', 'error');
+            return;
+        }
+        closeDialog();
+
+        try {
+            let dgCustomData = null, dgStatusPool = null, customWeatherMap = {};
+            if (inclSettings) {
+                try { dgCustomData = JSON.parse(localStorage.getItem('dg_custom_data') || 'null'); } catch(e2) {}
+                try { dgStatusPool = JSON.parse(localStorage.getItem('dg_status_pool') || 'null'); } catch(e2) {}
+                try {
+                    Object.keys(localStorage).forEach(kk => {
+                        if (kk && kk.startsWith('customWeather_')) {
+                            customWeatherMap[kk] = localStorage.getItem(kk);
+                        }
+                    });
+                } catch(e2) {}
+            }
+
+            const exportObj = {
+                version: '3.1',
+                appName: 'ChatApp',
+                exportDate: new Date().toISOString(),
+                exportModules: []
+            };
+            if (inclMsgs)     {
+                exportObj.messages = messages.map(m => {
+                    const { image, ...rest } = m;
+                    return rest;
+                });
+                exportObj.exportModules.push('messages');
+            }
+            if (inclSettings) {
+                exportObj.settings = settings;
+                exportObj.exportModules.push('settings');
+                exportObj.dgCustomData = dgCustomData;
+                exportObj.dgStatusPool = dgStatusPool;
+                exportObj.customWeatherMap = customWeatherMap;
+            }
+            if (inclReplies)  {
+                exportObj.customReplies = customReplies;
+                if (customEmojis && customEmojis.length > 0) exportObj.customEmojis = customEmojis;
+                if (customPokes && customPokes.length > 0) exportObj.customPokes = customPokes;
+                if (customStatuses && customStatuses.length > 0) exportObj.customStatuses = customStatuses;
+                if (customMottos && customMottos.length > 0) exportObj.customMottos = customMottos;
+                if (customIntros && customIntros.length > 0) exportObj.customIntros = customIntros;
+                if (customPeriodCare && customPeriodCare.length > 0) exportObj.customPeriodCare = customPeriodCare;
+                if (window.customReplyGroups && window.customReplyGroups.length > 0) exportObj.customReplyGroups = window.customReplyGroups;
+                if (window.customPokeGroups && window.customPokeGroups.length > 0) exportObj.customPokeGroups = window.customPokeGroups;
+                if (window.customStatusGroups && window.customStatusGroups.length > 0) exportObj.customStatusGroups = window.customStatusGroups;
+                exportObj.exportModules.push('customReplies');
+            }
+            if (inclAnn)      { exportObj.anniversaries = anniversaries; exportObj.exportModules.push('anniversaries'); }
+            if (inclThemes)   {
+                exportObj.customThemes = customThemes;
+                exportObj.exportModules.push('themes');
+            }
+            if (inclDiary) {
+                exportObj.companionDiary = _diaryForExport;
+                exportObj.exportModules.push('companionDiary');
+            }
+            if (inclMood && _moodForExport && Object.keys(_moodForExport).length > 0) {
+                exportObj.moodCalendar = _moodForExport;
+                if (_customMoodOptionsForExport.length > 0) exportObj.customMoodOptions = _customMoodOptionsForExport;
+                exportObj.exportModules.push('moodCalendar');
+            }
+
+            const dataStr = JSON.stringify(exportObj, null, 2);
+            const parts = exportObj.exportModules.join('+');
+            const fileName = `chat-export-${parts}-${new Date().toISOString().slice(0,10)}.json`;
+
+            if (navigator.share && /Mobile|Android|iPhone|iPad/.test(navigator.userAgent)) {
+                const blob = new Blob([dataStr], { type: 'application/json;charset=utf-8' });
+                const file = new File([blob], fileName, { type: 'application/json' });
+                if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                    navigator.share({ files: [file], title: '传讯数据导出', text: `导出日期：${new Date().toLocaleDateString()}` })
+                        .catch(() => fallbackExport(dataStr, fileName));
+                    return;
+                }
+            }
+            fallbackExport(dataStr, fileName);
+        } catch (error) {
+            console.error('导出失败:', error);
+            showNotification('导出失败，请重试', 'error');
+        }
+    };
+}
+
+function fallbackExport(dataStr, fileName) {
+    fileName = fileName || `chat-backup-${SESSION_ID}-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
+    const dataBlob = new Blob([dataStr], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    showNotification('导出成功', 'success');
+}
+
+function importChatHistory(file) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            let rawText = e.target.result;
+            if (rawText.charCodeAt(0) === 0xFEFF) rawText = rawText.slice(1);
+            let importedData = JSON.parse(rawText);
+
+            if (importedData && typeof importedData === 'object' &&
+                (importedData.type === 'full' || importedData.indexedDB || importedData.localforage) &&
+                !importedData.messages && !importedData.settings) {
+
+                const idb = importedData.indexedDB || importedData.localforage || {};
+                const ls  = importedData.localStorage || {};
+                const allKv = Object.assign({}, idb, ls);
+
+                let detectedSid = null;
+                const appPfx = importedData.appPrefix || 'CHAT_APP_V3_';
+                for (const k of Object.keys(allKv)) {
+                    if (k.indexOf('_chatMessages') !== -1 && k.startsWith(appPfx)) {
+                        const after = k.slice(appPfx.length);
+                        const u = after.indexOf('_');
+                        if (u > 0) { detectedSid = after.slice(0, u); break; }
+                    }
+                }
+
+                const pfxSid = detectedSid ? (appPfx + detectedSid + '_') : null;
+                const getVal = (suffix) => {
+                    if (pfxSid) {
+                        const v = allKv[pfxSid + suffix];
+                        if (v !== undefined && v !== null) return v;
+                    }
+                    return allKv[suffix] !== undefined ? allKv[suffix] : null;
+                };
+                const parseVal = (v) => {
+                    if (v === null || v === undefined) return null;
+                    if (typeof v !== 'string') return v;
+                    try { return JSON.parse(v); } catch(e2) { return v; }
+                };
+
+                const converted = {
+                    version: importedData.version || '3.1',
+                    appName:  importedData.appName || 'ChatApp',
+                    exportDate: importedData.exportDate || importedData.timestamp || new Date().toISOString(),
+                    exportModules: []
+                };
+
+                const msgs = parseVal(getVal('chatMessages'));
+                if (Array.isArray(msgs)) { converted.messages = msgs; converted.exportModules.push('messages'); }
+
+                const chatSettings = parseVal(getVal('chatSettings'));
+                if (chatSettings && typeof chatSettings === 'object') {
+                    converted.settings = chatSettings;
+                    converted.exportModules.push('settings');
+                }
+                const dgCustomData = parseVal(ls['dg_custom_data'] !== undefined ? ls['dg_custom_data'] : null);
+                if (dgCustomData) converted.dgCustomData = dgCustomData;
+                const dgStatusPool = parseVal(ls['dg_status_pool'] !== undefined ? ls['dg_status_pool'] : null);
+                if (dgStatusPool) converted.dgStatusPool = dgStatusPool;
+                const customWeatherMap = {};
+                for (const wk of Object.keys(ls)) {
+                    if (wk && wk.startsWith('customWeather_')) customWeatherMap[wk] = ls[wk];
+                }
+                if (Object.keys(customWeatherMap).length) converted.customWeatherMap = customWeatherMap;
+
+                const replies = parseVal(getVal('customReplies'));
+                if (Array.isArray(replies)) { converted.customReplies = replies; converted.exportModules.push('customReplies'); }
+
+                const emojis = parseVal(getVal('customEmojis'));
+                if (Array.isArray(emojis)) converted.customEmojis = emojis;
+
+                const ann = parseVal(getVal('anniversaries'));
+                if (Array.isArray(ann)) { converted.anniversaries = ann; converted.exportModules.push('anniversaries'); }
+
+                const themes = parseVal(allKv[appPfx + 'customThemes'] !== undefined ? allKv[appPfx + 'customThemes'] : (ls[appPfx + 'customThemes'] || null));
+                if (themes) { converted.customThemes = themes; converted.exportModules.push('themes'); }
+
+                importedData = converted;
+            }
+
+            const hasMessages  = importedData.messages && Array.isArray(importedData.messages);
+            const hasSettings  = !!importedData.settings;
+            const hasReplies   = importedData.customReplies && Array.isArray(importedData.customReplies);
+            const hasAnn       = importedData.anniversaries && Array.isArray(importedData.anniversaries);
+            const hasThemes    = !!importedData.customThemes || !!importedData.stickerLibrary;
+            const hasDiary     = importedData.companionDiary && Array.isArray(importedData.companionDiary);
+            const hasMood      = !!importedData.moodCalendar && typeof importedData.moodCalendar === 'object';
+
+            if (!hasMessages && !hasSettings && !hasReplies && !hasAnn && !hasThemes && !hasDiary && !hasMood) {
+                throw new Error('无效的聊天记录文件（未检测到可识别的数据模块）');
+            }
+
+            const overlay = document.createElement('div');
+            overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.55);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;animation:fadeIn 0.2s ease;';
+
+            const makeRow = (id, icon, label, sublabel, available, checked) => {
+                if (!available) return '';
+                return `<label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1px solid var(--border-color);border-radius:12px;background:var(--primary-bg);font-size:13px;color:var(--text-primary);">
+                    <input type="checkbox" id="${id}" ${checked ? 'checked' : ''} style="accent-color:var(--accent-color);width:15px;height:15px;">
+                    <i class="${icon}" style="color:var(--accent-color);width:16px;text-align:center;"></i>
+                    <span>${label}${sublabel ? `<span style="font-size:11px;color:var(--text-secondary);margin-left:4px;">${sublabel}</span>` : ''}</span>
+                </label>`;
+            };
+
+            overlay.innerHTML = `
+                <div style="background:var(--secondary-bg);border-radius:20px;padding:24px;width:88%;max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.4);animation:modalContentSlideIn 0.3s ease forwards;">
+                    <div style="font-size:15px;font-weight:700;color:var(--text-primary);margin-bottom:6px;display:flex;align-items:center;gap:8px;">
+                        <i class="fas fa-file-import" style="color:var(--accent-color);font-size:14px;"></i>选择导入内容
+                    </div>
+                    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:16px;">文件中检测到以下数据，选择要导入的模块</div>
+                    <div style="display:flex;flex-direction:column;gap:9px;margin-bottom:20px;">
+                        ${makeRow('_imp_msgs', 'fas fa-comments', '聊天记录', hasMessages ? `(${importedData.messages.length} 条)` : '', hasMessages, true)}
+                        ${makeRow('_imp_settings', 'fas fa-sliders-h', '外观与聊天设置', '', hasSettings, true)}
+                        ${makeRow('_imp_replies', 'fas fa-reply', '字卡回复库', '', hasReplies, false)}
+                        ${makeRow('_imp_ann', 'fas fa-calendar-heart', '纪念日 / 倒计时', '', hasAnn, false)}
+                        ${makeRow('_imp_themes', 'fas fa-palette', '自定义主题配色', '', hasThemes, false)}
+                        ${makeRow('_imp_diary', 'fas fa-book-open', '陪伴日记', hasDiary ? `(${importedData.companionDiary.length} 条)` : '', hasDiary, false)}
+                        ${makeRow('_imp_mood', 'fas fa-face-smile', '心情手账', hasMood ? `(${Object.keys(importedData.moodCalendar).length} 天)` : '', hasMood, false)}
+                    </div>
+                    <div style="display:flex;gap:10px;">
+                        <button id="_imp_cancel" style="flex:1;padding:11px;border:1px solid var(--border-color);border-radius:12px;background:none;color:var(--text-secondary);font-size:13px;cursor:pointer;font-family:var(--font-family);">取消</button>
+                        <button id="_imp_confirm" style="flex:2;padding:11px;border:none;border-radius:12px;background:var(--accent-color);color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font-family);display:flex;align-items:center;justify-content:center;gap:7px;">
+                            <i class="fas fa-upload"></i>确认导入
+                        </button>
+                    </div>
+                </div>`;
+            document.body.appendChild(overlay);
+
+            function closeDialog() { overlay.remove(); }
+            overlay.addEventListener('click', ev => { if (ev.target === overlay) closeDialog(); });
+            const _impCancelBtn = document.getElementById('_imp_cancel');
+            const _impConfirmBtn = document.getElementById('_imp_confirm');
+            if (_impCancelBtn) _impCancelBtn.onclick = closeDialog;
+
+            if (_impConfirmBtn) _impConfirmBtn.onclick = function() {
+                const doMsgs     = hasMessages  && !!document.getElementById('_imp_msgs')?.checked;
+                const doSettings = hasSettings  && !!document.getElementById('_imp_settings')?.checked;
+                const doReplies  = hasReplies   && !!document.getElementById('_imp_replies')?.checked;
+                const doAnn      = hasAnn       && !!document.getElementById('_imp_ann')?.checked;
+                const doThemes   = hasThemes    && !!document.getElementById('_imp_themes')?.checked;
+                const doDiary    = hasDiary     && !!document.getElementById('_imp_diary')?.checked;
+                const doMood     = hasMood      && !!document.getElementById('_imp_mood')?.checked;
+
+                if (!doMsgs && !doSettings && !doReplies && !doAnn && !doThemes && !doDiary && !doMood) {
+                    showNotification('请至少选择一项导入内容', 'error');
+                    return;
+                }
+
+                if (doMsgs && messages.length > 0 && !confirm('导入将覆盖当前会话的聊天记录，确定继续吗？')) return;
+                closeDialog();
+
+                if (doMsgs) {
+                    messages = importedData.messages
+                        .filter(m => !m.contactId || m.contactId === SESSION_ID)
+                        .map(m => ({ ...m, timestamp: new Date(m.timestamp), contactId: SESSION_ID }));
+                }
+                if (doSettings) {
+                    if (importedData.settings) {
+                        Object.assign(settings, importedData.settings);
+                        try {
+                            if (settings.customFontUrl) applyCustomFont(settings.customFontUrl);
+                            if (settings.customBubbleCss) applyCustomBubbleCss(settings.customBubbleCss);
+                            if (settings.customGlobalCss) applyGlobalThemeCss(settings.customGlobalCss);
+                        } catch(e2) { console.warn('导入后样式应用失败', e2); }
+                    }
+                    if (importedData.dgCustomData) { try { localStorage.setItem('dg_custom_data', JSON.stringify(importedData.dgCustomData)); } catch(e2) {} }
+                    if (importedData.dgStatusPool) { try { localStorage.setItem('dg_status_pool', JSON.stringify(importedData.dgStatusPool)); } catch(e2) {} }
+                    if (importedData.customWeatherMap) { try { Object.keys(importedData.customWeatherMap).forEach(wk => localStorage.setItem(wk, importedData.customWeatherMap[wk])); } catch(e2) {} }
+                }
+                if (doReplies  && importedData.customReplies)  customReplies  = importedData.customReplies;
+                if (doReplies  && importedData.customEmojis && Array.isArray(importedData.customEmojis)) customEmojis = importedData.customEmojis;
+                if (doReplies  && importedData.customPokes && Array.isArray(importedData.customPokes)) customPokes = importedData.customPokes;
+                if (doReplies  && importedData.customStatuses && Array.isArray(importedData.customStatuses)) customStatuses = importedData.customStatuses;
+                if (doReplies  && importedData.customMottos && Array.isArray(importedData.customMottos)) customMottos = importedData.customMottos;
+                if (doReplies  && importedData.customPeriodCare && Array.isArray(importedData.customPeriodCare)) customPeriodCare = importedData.customPeriodCare;
+                if (doReplies  && importedData.customIntros && Array.isArray(importedData.customIntros)) customIntros = importedData.customIntros;
+                if (doReplies  && importedData.customReplyGroups) window.customReplyGroups = importedData.customReplyGroups;
+                if (doReplies  && importedData.customPokeGroups) window.customPokeGroups = importedData.customPokeGroups;
+                if (doReplies  && importedData.customStatusGroups) window.customStatusGroups = importedData.customStatusGroups;
+                if (doAnn      && importedData.anniversaries)   anniversaries  = importedData.anniversaries;
+                if (doThemes   && importedData.customThemes)    customThemes   = importedData.customThemes;
+                if (doThemes   && importedData.stickerLibrary)  stickerLibrary = importedData.stickerLibrary;
+                if (doDiary    && importedData.companionDiary && typeof window._setCompanionDiaryEntries === 'function') {
+                    window._setCompanionDiaryEntries(importedData.companionDiary);
+                }
+                if (doMood && importedData.moodCalendar && typeof window._setMoodData === 'function') {
+                    window._setMoodData(importedData.moodCalendar, importedData.customMoodOptions || []);
+                }
+
+                saveData();
+                if (doMsgs && typeof renderMessages === 'function') renderMessages();
+                if (typeof applySettings === 'function') applySettings();
+                updateUI();
+                const count = doMsgs ? `${messages.length} 条消息` : '所选数据';
+                showNotification(`成功导入${count}`, 'success');
+            };
+        } catch (error) {
+            console.error('导入失败:', error);
+            showNotification('文件格式错误或已损坏', 'error');
+        }
+    };
+    reader.onerror = () => showNotification('文件读取失败', 'error');
+    reader.readAsText(file);
+}
+
+// ============================================================
+// 状态更新
+// ============================================================
+window._triggerStatusChange = function() {
+    let newStatus = null;
+    const groups = window.customStatusGroups || [];
+    const allStatuses = (typeof customStatuses !== 'undefined' ? customStatuses : []) || [];
+    const enabledGroups = groups.filter(function(g) {
+        return !g.disabled && Array.isArray(g.items) && g.items.length > 0;
+    });
+    const groupedItems = new Set();
+    enabledGroups.forEach(function(g) { g.items.forEach(function(t) { groupedItems.add(t); }); });
+    const ungroupedStatuses = allStatuses.filter(function(t) { return !groupedItems.has(t); });
+
+    if (enabledGroups.length > 0) {
+        const pickedGroup = enabledGroups[Math.floor(Math.random() * enabledGroups.length)];
+        const groupPool = pickedGroup.items.filter(function(t) { return allStatuses.includes(t); });
+        if (groupPool.length > 0) newStatus = groupPool[Math.floor(Math.random() * groupPool.length)];
+    }
+    if (!newStatus && ungroupedStatuses.length > 0) newStatus = ungroupedStatuses[Math.floor(Math.random() * ungroupedStatuses.length)];
+    if (!newStatus && allStatuses.length > 0) newStatus = allStatuses[Math.floor(Math.random() * allStatuses.length)];
+    if (!newStatus && CONSTANTS.PARTNER_STATUSES && CONSTANTS.PARTNER_STATUSES.length > 0) newStatus = getRandomItem(CONSTANTS.PARTNER_STATUSES);
+    if (!newStatus) return;
+
+    settings.partnerStatus = newStatus;
+    settings.lastStatusChange = Date.now();
+    settings.nextStatusChange = 1 + Math.random() * 7;
+    DOMElements.partner.status.textContent = newStatus;
+    throttledSaveData();
+};
+
+const checkStatusChange = () => {
+    if ((Date.now() - settings.lastStatusChange) / 36e5 >= settings.nextStatusChange) {
+        window._triggerStatusChange();
+    }
+};
+
+// ============================================================
+// getStorageKey / favAudioKey / migrateData / initializeSession
+// ============================================================
+function getStorageKey(baseKey) {
+    if (!SESSION_ID) {
+        console.error('[getStorageKey] SESSION_ID 尚未初始化，拒绝生成存储键:', baseKey);
+        throw new Error('SESSION_ID 未初始化，存储操作已中止');
+    }
+    return `${APP_PREFIX}${SESSION_ID}_${baseKey}`;
+}
+
+function favAudioKey(messageId) {
+    return getStorageKey(`favAudio_${messageId}`);
+}
+window.favAudioKey = favAudioKey;
+
+async function migrateData() {
+    const isMigrated = await localforage.getItem(APP_PREFIX + 'MIGRATION_V2_DONE');
+    if (isMigrated) return;
+    try {
+        const keys = Object.keys(localStorage);
+        for (const key of keys) {
+            if (key.startsWith(APP_PREFIX)) {
+                try {
+                    const val = localStorage.getItem(key);
+                    if (val) {
+                        let dataToStore = val;
+                        try {
+                            if (val.startsWith('{') || val.startsWith('[')) dataToStore = JSON.parse(val);
+                        } catch (e) {}
+                        await localforage.setItem(key, dataToStore);
+                    }
+                } catch (e) {}
+            }
+        }
+        await localforage.setItem(APP_PREFIX + 'MIGRATION_V2_DONE', 'true');
+    } catch (e) {
+        console.error("数据迁移过程中发生严重错误:", e);
+    }
+}
+
+window.initializeSession = async function() {
+    await migrateData();
+
+    const sessionsData = await localforage.getItem(`${APP_PREFIX}sessionList`);
+    sessionList = sessionsData || [];
+
+    let savedRole = localStorage.getItem('active_contact_role');
+
+    if (savedRole) {
+        SESSION_ID = savedRole;
+    } else {
+        if (sessionList.length > 0) {
+            const lastId = await localforage.getItem(`${APP_PREFIX}lastSessionId`);
+            SESSION_ID = lastId && sessionList.some(s => s.id === lastId) ? lastId : sessionList[0].id;
+        } else {
+            SESSION_ID = await createNewSession(false);
+        }
+        localStorage.setItem('active_contact_role', 'role_A');
+    }
+
+    window.currentContactId = SESSION_ID;
+    await localforage.setItem(`${APP_PREFIX}lastSessionId`, SESSION_ID);
+
+    if (window.location.search.includes('role=')) {
+        const cleanUrl = window.location.pathname + window.location.hash;
+        window.history.replaceState({}, document.title, cleanUrl);
+    }
+};
+
+// ============================================================
+// 系统昼夜监听
+// ============================================================
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+    document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
+});
