@@ -1142,3 +1142,18 @@
 
     console.log('[梦向问卷] 模块已加载（等待 SESSION_ID 就绪后启动）');
 })();
+
+window.initDreamSurvey = function() {
+    // 梦向问卷不需要主动初始化，数据是即时从 localStorage 读的
+    // 但每次切换角色后要重置当日的弹窗记录，否则会串到上一个角色
+    if (typeof _getDailyRecord === 'function') {
+        var today = new Date().toDateString();
+        var rec = _getDailyRecord();
+        if (rec.lastDate !== today) {
+            rec.lastDate = today;
+            rec.popupCount = 0;
+            rec.maxPopups = 2 + Math.floor(Math.random() * 3);
+            _setDailyRecord(rec);
+        }
+    }
+};
