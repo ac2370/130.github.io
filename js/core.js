@@ -276,6 +276,16 @@ const loadData = async () => {
             DOMElements.chatContainer.innerHTML = ''; 
         }
 
+        // 【新增】切换角色时，先清空所有跟回复库相关的全局变量，
+        // 保证新角色读取到的是自己的数据，不会被旧角色的残留覆盖
+        customReplies = [];
+        window.customReplies = [];
+        window._customReplies = [];
+        window.customReplyGroups = [];
+        customEmojis = [];
+        stickerLibrary = [];
+        myStickerLibrary = [];
+
         settings = getDefaultSettings();
 
         const results = await Promise.allSettled([
@@ -2314,6 +2324,16 @@ window.switchActiveContact = async function(nextRole, nextName) {
     }
     messages = [];
     window.messages = [];
+
+    // 【新增】切换角色时，把回复库相关的全局变量也清空，
+    // 避免旧角色的回复库残留到新角色，造成看起来"没有隔离"
+    customReplies = [];
+    window.customReplies = [];
+    window._customReplies = [];
+    window.customReplyGroups = [];
+    customEmojis = [];
+    stickerLibrary = [];
+    myStickerLibrary = [];
 
     // 4. 重新加载新角色的数据（使用 window.loadData 显式调用，确保一定执行）
     if (typeof window.loadData === 'function') {
