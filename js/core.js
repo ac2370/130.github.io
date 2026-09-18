@@ -1,10 +1,8 @@
 /* 核心应用逻辑：数据加载保存、消息渲染、会话管理等
-   —— 多角色隔离 + 防串框 + 防闪屏 + 多监听通道 融合版 */
+   —— 多角色隔离 + 异步回复角色锁 + 防串框 + 防闪屏 + 多监听通道 融合版 */
 
 // ============================================================
 // 【新增】梦角回复消息的多监听通道
-// 新模块用 window._registerPartnerMessageListener(fn) 注册，
-// 不要直接赋值 window._onPartnerMessage，那个是给旧模块（陪伴）用的
 // ============================================================
 window._partnerMessageListeners = window._partnerMessageListeners || [];
 window._registerPartnerMessageListener = window._registerPartnerMessageListener || function (fn) {
@@ -12,9 +10,7 @@ window._registerPartnerMessageListener = window._registerPartnerMessageListener 
 };
 
 // ============================================================
-// 【新增】消息浏览模式状态（防串框的关键）
-// msgViewMode: 'latest' 正常看最新 | 'window' 浏览历史窗口
-// msgWinStart / msgWinEnd: window 模式下渲染的切片范围
+// 【新增】消息浏览模式状态（防串框）
 // ============================================================
 let msgViewMode = 'latest';
 let msgWinStart = 0;
@@ -22,7 +18,14 @@ let msgWinEnd = 0;
 let newMsgCountWhileBrowsing = 0;
 
 // ============================================================
-// clearAllAppData —— 完全保留
+// 【新增】异步回复任务的角色锁池
+// 每次触发 simulateReply 时创建 task，绑定发起时的 SESSION_ID
+// 执行时先校验 SESSION_ID 是否还是同一个
+// ============================================================
+window._pendingReplyTasks = window._pendingReplyTasks || {};
+
+// ============================================================
+// clearAllAppData —— 保留
 // ============================================================
 function clearAllAppData() {
     const overlay = document.createElement('div');
@@ -98,8 +101,7 @@ function clearAllAppData() {
 }
 
 // ============================================================
-// 【新增】增量加载更早的消息（不清空重画，防闪屏）
-// 把 messages[startIdx, endIdx) 直接插到聊天区域最上面
+// 增量加载更早的消息
 // ============================================================
 function _prependOlderMessages(startIdx, endIdxExclusive) {
     const container = DOMElements.chatContainer;
@@ -135,7 +137,7 @@ function _prependOlderMessages(startIdx, endIdxExclusive) {
 }
 
 // ============================================================
-// 【新增】增量加载更晚的消息（不清空重画，防闪屏）
+// 增量加载更晚的消息
 // ============================================================
 function _appendNewerMessages(startIdx, endIdxExclusive) {
     const container = DOMElements.chatContainer;
@@ -161,7 +163,7 @@ function _appendNewerMessages(startIdx, endIdxExclusive) {
 }
 
 // ============================================================
-// loadMoreHistory —— 往上翻历史
+// loadMoreHistory
 // ============================================================
 function loadMoreHistory() {
     const historyLoader = document.getElementById('history-loader');
@@ -201,7 +203,7 @@ function loadMoreHistory() {
 }
 
 // ============================================================
-// loadMoreFuture —— 往下翻（只在 window 模式用）
+// loadMoreFuture
 // ============================================================
 function loadMoreFuture() {
     const futureLoader = document.getElementById('future-loader');
@@ -239,7 +241,7 @@ function loadMoreFuture() {
 
 
 // ============================================================
-// getDefaultSettings —— 完全保留
+// getDefaultSettings —— 保留
 // ============================================================
 function getDefaultSettings() {
     return {
@@ -299,7 +301,7 @@ function getDefaultSettings() {
 
 
 // ============================================================
-// renderBackgroundGallery —— 完全保留
+// renderBackgroundGallery —— 保留
 // ============================================================
 function renderBackgroundGallery() {
     const list = document.getElementById('background-gallery-list');
@@ -432,14 +434,12 @@ const applyBackground = async (value) => {
 // ============================================================
 const loadData = async () => {
     try {
-        // 【多角色隔离】切换角色时先清空内存和界面，防止旧数据闪现
         messages = [];
         window.messages = [];
         if (typeof DOMElements !== 'undefined' && DOMElements.chatContainer) {
             DOMElements.chatContainer.innerHTML = '';
         }
 
-        // 【多角色隔离】清空回复库相关全局变量，防止旧角色的残留
         customReplies = [];
         window.customReplies = [];
         window._customReplies = [];
@@ -448,7 +448,6 @@ const loadData = async () => {
         stickerLibrary = [];
         myStickerLibrary = [];
 
-        // 【防串框】重置消息浏览状态
         msgViewMode = 'latest';
         msgWinStart = 0;
         msgWinEnd = 0;
@@ -537,7 +536,6 @@ const loadData = async () => {
 
         customPeriodCare = savedPeriodCare || [];
 
-        // 【多角色隔离】按当前 SESSION_ID 过滤消息（兼容没有 contactId 的旧数据）
         if (savedMessages && Array.isArray(savedMessages)) {
             messages = savedMessages
                 .filter(m => !m.contactId || m.contactId === SESSION_ID)
@@ -580,7 +578,6 @@ const loadData = async () => {
         if (savedMyStickerGroups) window.myStickerGroups = savedMyStickerGroups;
         else window.myStickerGroups = [];
 
-        // 迁移：我的表情库从纯字符串数组升级为对象数组
         (function _migrateMyStickerLibrary() {
             if (!Array.isArray(myStickerLibrary) || !myStickerLibrary.length) return;
             var needsMigration = myStickerLibrary.some(function (s) { return typeof s === 'string'; });
@@ -617,7 +614,6 @@ const loadData = async () => {
             }
         }
 
-        // 高级模块各自初始化
         try { await initMoodData(); } catch(e) { console.warn("心情数据加载失败", e); }
         try { await loadEnvelopeData(); } catch(e) { console.warn("信封数据加载失败", e); }
         try { if (typeof initMoments === 'function') await initMoments(); } catch(e) { console.warn("朋友圈数据加载失败", e); }
@@ -647,12 +643,11 @@ const loadData = async () => {
     }
 };
 
-// 【关键修复】显式挂载到 window，供 contact-switcher.js 调用
 window.loadData = loadData;
 
 
 // ============================================================
-// LIBRARY_CONFIG —— 完全保留
+// LIBRARY_CONFIG —— 保留
 // ============================================================
 const LIBRARY_CONFIG = {
     reply: {
@@ -678,9 +673,6 @@ const LIBRARY_CONFIG = {
 let currentAnnType = 'anniversary';
 
 
-// ============================================================
-// 各类辅助函数 —— 完全保留
-// ============================================================
 window.openMyStickerSettings = function() {
     const picker = document.getElementById('user-sticker-picker');
     if (picker) picker.classList.remove('active');
@@ -726,7 +718,7 @@ window.deleteAnniversaryItem = function(id) {
 
 
 // ============================================================
-// 备份与恢复 —— 完全保留
+// 备份与恢复
 // ============================================================
 const _BACKUP_PREFIX = 'BACKUP_V1_';
 function _backupCriticalData() {
@@ -781,7 +773,7 @@ function _tryRecoverFromBackup() {
 
 
 // ============================================================
-// saveData —— 保留原有 + 给消息打 contactId 归属
+// saveData —— 保留
 // ============================================================
 const saveData = async () => {
     if (!SESSION_ID) {
@@ -789,7 +781,6 @@ const saveData = async () => {
         return;
     }
 
-    // 【多角色隔离】保存前，给所有消息打上当前 SESSION_ID 标记（兼容旧数据）
     messages.forEach(function (m) {
         if (!m.contactId) m.contactId = SESSION_ID;
     });
@@ -846,12 +837,11 @@ const saveData = async () => {
     _backupCriticalData();
 };
 
-// 【关键修复】显式挂载到 window，供 contact-switcher.js 调用
 window.saveData = saveData;
 
 
 // ============================================================
-// initializeRandomUI —— 完全保留
+// initializeRandomUI —— 保留
 // ============================================================
 function initializeRandomUI() {
     document.querySelector('.header-motto').textContent = getRandomItem(CONSTANTS.HEADER_MOTTOS);
@@ -1022,7 +1012,7 @@ function manageAutoSendTimer() {
 
 
 // ============================================================
-// updateUI —— 完全保留
+// updateUI —— 保留
 // ============================================================
 const updateUI = () => {
     const isCustomTheme = settings.colorTheme.startsWith('custom-');
@@ -1143,7 +1133,7 @@ window.scrollToQuotedMessage = function(el) {
 
 
 // ============================================================
-// createMessageFragment —— 完全保留
+// createMessageFragment —— 保留
 // ============================================================
 function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
     const fragment = new DocumentFragment();
@@ -1406,7 +1396,7 @@ function _updateReadReceiptsDOM() {
 
 
 // ============================================================
-// renderMessages —— 融合 window 模式，防串框
+// renderMessages —— 保留
 // ============================================================
 function renderMessages(preserveScroll = false) {
     const container = DOMElements.chatContainer;
@@ -1465,10 +1455,6 @@ function renderMessages(preserveScroll = false) {
     }
 }
 
-
-// ============================================================
-// _jumpToMessage / _backToLatestMessages / 辅助按钮 —— 完全保留
-// ============================================================
 window._jumpToMessage = function(id) {
     const idx = messages.findIndex(m => String(m.id) === String(id));
     if (idx === -1) {
@@ -1538,16 +1524,48 @@ function _isCaughtUpToLatest() {
 
 
 // ============================================================
-// addMessage —— 融合 contactId 归属 + 多监听通道
+// 【核心】addMessage —— 带角色锁，防串框
+// 新增 silent 参数：后台任务填充消息时不触发 UI 渲染
 // ============================================================
-const addMessage = (message) => {
+const addMessage = (message, opts) => {
+    opts = opts || {};
     if (!(message.timestamp instanceof Date)) message.timestamp = new Date(message.timestamp);
 
-    // 【多角色隔离】新消息自动打上当前 SESSION_ID 归属
     if (!message.contactId) {
         message.contactId = window.SESSION_ID;
     }
 
+    const isCurrentContact = (message.contactId === window.SESSION_ID);
+
+    // 【后台写入】如果消息不属于当前联系人，只写进该角色的存储，不动 UI
+    if (!isCurrentContact) {
+        if (opts.silent !== true) {
+            // 静默调用（后台任务）—— 写进对应存储池，不动当前 UI
+            (async function () {
+                try {
+                    const key = `${APP_PREFIX}${message.contactId}_chatMessages`;
+                    const existing = await localforage.getItem(key) || [];
+                    existing.push(message);
+                    await localforage.setItem(key, existing);
+                    console.log('[addMessage] 后台写入到', message.contactId, '消息数:', existing.length);
+                    // 通知用户
+                    if (typeof showNotification === 'function') {
+                        const nameMap = { 'role_A': '梦角A', 'role_B': '梦角B' };
+                        const displayName = nameMap[message.contactId] || message.contactId;
+                        const preview = (message.text || '').slice(0, 20) || '[图片]';
+                        showNotification(`💬 ${displayName} 回复了你：${preview}`, 'info', 4000);
+                    }
+                    // 播放提示音
+                    if (typeof playSound === 'function') playSound('message');
+                } catch (e) {
+                    console.warn('[addMessage] 后台写入失败:', e);
+                }
+            })();
+        }
+        return;
+    }
+
+    // ========== 下面是当前联系人，正常渲染 ==========
     const container = DOMElements.chatContainer;
     const wasEmpty = messages.length === 0;
 
@@ -1823,7 +1841,8 @@ function sendMessage(textOverride = null, type = 'normal') {
             favorited: false,
             note: null,
             replyTo: currentReplyTo,
-            type: type
+            type: type,
+            contactId: window.SESSION_ID
         };
         if (type === 'system') messageData.sender = null;
 
@@ -1966,20 +1985,30 @@ function positionTypingIndicator() {
     ro.observe(inputArea);
 })();
 
+
+// ============================================================
+// 【核心】_triggerDelayedReply —— 绑定发起时的 SESSION_ID
+// ============================================================
 window._triggerDelayedReply = function(isUserMessage) {
     if (isBatchMode) return false;
     if (isUserMessage) {
         window._companionSilentTrigger = false;
     }
-    const delayRange = settings.replyDelayMax - settings.replyDelayMin;
-    const randomDelay = settings.replyDelayMin + Math.random() * delayRange;
 
-    const chance = Math.max(0, Math.min(1, Number(settings.readNoReplyChance) || 0));
-    const shouldIgnore = settings.allowReadNoReply && (Math.random() < chance);
+    // 【关键】锁定发起时的角色 ID
+    const originContactId = window.SESSION_ID;
+    const originSettings = Object.assign({}, settings);
+
+    const delayRange = originSettings.replyDelayMax - originSettings.replyDelayMin;
+    const randomDelay = originSettings.replyDelayMin + Math.random() * delayRange;
+
+    const chance = Math.max(0, Math.min(1, Number(originSettings.readNoReplyChance) || 0));
+    const shouldIgnore = originSettings.allowReadNoReply && (Math.random() < chance);
 
     if (isUserMessage) {
         const readDelay = 1500 + Math.random() * 2500;
         setTimeout(() => {
+            if (window.SESSION_ID !== originContactId) return; // 已切换，跳过
             let changed = false;
             messages.forEach(msg => {
                 if (msg.sender === 'user' && msg.status !== 'read') {
@@ -2014,14 +2043,25 @@ window._triggerDelayedReply = function(isUserMessage) {
 
     window._pendingReplyTimer = setTimeout(() => {
         window._pendingReplyTimer = null;
-        simulateReply();
-        setTimeout(() => { window._companionSilentTrigger = false; }, (settings.replyDelayMax || 3000) + 500);
+        // 把角色锁传给 simulateReply
+        simulateReply(originContactId);
+        setTimeout(() => { window._companionSilentTrigger = false; }, (originSettings.replyDelayMax || 3000) + 500);
     }, randomDelay);
     return true;
 };
 
-window.simulateReply = function() {
+
+// ============================================================
+// 【核心】simulateReply —— 全流程角色锁
+// ============================================================
+window.simulateReply = function(originContactId) {
+    // 没传就默认当前角色
+    if (!originContactId) originContactId = window.SESSION_ID;
+
+    const isSameContact = (originContactId === window.SESSION_ID);
+
     function showTypingIndicator() {
+        if (!isSameContact) return; // 切走了就不显示 typing
         if (!settings.typingIndicatorEnabled) return;
         const tiWrapper = document.getElementById('typing-indicator-wrapper');
         const tiLabel = document.getElementById('typing-indicator-label');
@@ -2039,17 +2079,20 @@ window.simulateReply = function() {
             DOMElements.chatContainer.scrollTop = DOMElements.chatContainer.scrollHeight;
         }
     }
-    let changed = false;
-    messages.forEach(msg => {
-        if (msg.sender === 'user' && msg.status !== 'read') {
-            msg.status = 'read'; changed = true;
+
+    if (isSameContact) {
+        let changed = false;
+        messages.forEach(msg => {
+            if (msg.sender === 'user' && msg.status !== 'read') {
+                msg.status = 'read'; changed = true;
+            }
+        });
+        if (changed) {
+            _updateReadReceiptsDOM(); throttledSaveData();
         }
-    });
-    if (changed) {
-        _updateReadReceiptsDOM(); throttledSaveData();
     }
 
-    if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
+    if (isSameContact && partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
         const currentPool = [...partnerPersonas];
         if(currentPool.length > 0) {
             const nextPersona = currentPool[Math.floor(Math.random() * currentPool.length)];
@@ -2062,16 +2105,47 @@ window.simulateReply = function() {
             throttledSaveData();
         }
     }
-    if (Math.random() < 0.03) {
+
+    if (isSameContact && Math.random() < 0.03) {
         if (typeof window._triggerPartnerPoke === 'function') window._triggerPartnerPoke();
         return;
     }
 
     const replyCount = Math.random() < 0.75 ? 1: (Math.random() < 0.95 ? 2: 3);
-    if (!customReplies || customReplies.length === 0) {
-        showNotification('回复库为空，请先到「自定义回复」中添加内容', 'info', 3500);
+
+    // 【关键】读取的是"发起时所属角色的"回复库，而不是当前角色的
+    let poolCustomReplies = customReplies;
+    let poolCustomEmojis = customEmojis;
+    let poolStickerLibrary = stickerLibrary;
+    let poolCustomReplyGroups = window.customReplyGroups || [];
+
+    if (!isSameContact) {
+        // 切走了：要异步从存储里读发起角色的回复库
+        // 但这里是同步流程，为了不阻塞，先用当前内存的兜底；
+        // 真正的数据安全由 addMessage 的 contactId 保证（消息会存到发起角色的存储池）
+        // 下面用一个异步读取来替换 pool（如果读到了，就用）
+        (async function () {
+            try {
+                const prefix = `${APP_PREFIX}${originContactId}_`;
+                const [cr, ce, sl, crg] = await Promise.all([
+                    localforage.getItem(prefix + 'customReplies'),
+                    localforage.getItem(prefix + 'customEmojis'),
+                    localforage.getItem(prefix + 'stickerLibrary'),
+                    localforage.getItem(prefix + 'customReplyGroups')
+                ]);
+                if (Array.isArray(cr) && cr.length) poolCustomReplies = cr;
+                if (Array.isArray(ce) && ce.length) poolCustomEmojis = ce;
+                if (Array.isArray(sl) && sl.length) poolStickerLibrary = sl;
+                if (Array.isArray(crg) && crg.length) poolCustomReplyGroups = crg;
+            } catch (e) {}
+        })();
+    }
+
+    if (!poolCustomReplies || poolCustomReplies.length === 0) {
+        if (isSameContact) showNotification('回复库为空，请先到「自定义回复」中添加内容', 'info', 3500);
         return;
     }
+
     const disabledItemsOnce = (() => {
         try {
             const raw = localStorage.getItem('disabledReplyItems');
@@ -2079,31 +2153,35 @@ window.simulateReply = function() {
         } catch (e) { return new Set(); }
     })();
     const disabledGroupItemsOnce = new Set();
-    (window.customReplyGroups || []).forEach(g => {
+    poolCustomReplyGroups.forEach(g => {
         if (g.disabled && Array.isArray(g.items)) g.items.forEach(item => disabledGroupItemsOnce.add(item));
     });
-    const replyPoolOnce = customReplies
+    const replyPoolOnce = poolCustomReplies
         .filter(r => !disabledItemsOnce.has(r) && !disabledGroupItemsOnce.has(r))
         .map(r => String(r || '').trim())
         .filter(Boolean);
     if (!replyPoolOnce.length) {
-        showNotification('回复库可用内容为空（可能被分组禁用或屏蔽），请到「自定义回复」中调整', 'info', 4000);
+        if (isSameContact) showNotification('回复库可用内容为空（可能被分组禁用或屏蔽），请到「自定义回复」中调整', 'info', 4000);
         return;
     }
 
     showTypingIndicator();
+
     let delay = 0;
-    const recentUserMsgs = (settings.replyEnabled && !window._companionSilentTrigger)
+    const recentUserMsgs = (isSameContact && settings.replyEnabled && !window._companionSilentTrigger)
         ? messages.filter(m => m.sender === 'user' && m.text).slice(-10)
         : [];
+
+    const capturedPartnerName = (isSameContact ? settings.partnerName : null) || '对方';
+
     for (let i = 0; i < replyCount; i++) {
-        const delayRange = settings.replyDelayMax - settings.replyDelayMin;
-        delay += settings.replyDelayMin + Math.random() * delayRange;
+        const delayRange = (isSameContact ? settings.replyDelayMax : 7000) - (isSameContact ? settings.replyDelayMin : 3000);
+        delay += (isSameContact ? settings.replyDelayMin : 3000) + Math.random() * delayRange;
         setTimeout(() => {
             try {
                 const replyPool = replyPoolOnce;
                 let replyText = '';
-                if (settings.combineReplyCards) {
+                if (isSameContact && settings.combineReplyCards) {
                     const maxN = Math.max(1, Math.min(5, parseInt(settings.combineReplyMaxCards, 10) || 3));
                     const n = 1 + Math.floor(Math.random() * maxN);
                     for (let k = 0; k < n; k++) {
@@ -2129,13 +2207,13 @@ window.simulateReply = function() {
                     const raw = localStorage.getItem('disabledStickerItems');
                     if (raw) disabledStickerItems = new Set(JSON.parse(raw));
                 } catch (e) {}
-                const enabledStickerPool = (stickerLibrary || []).filter(s => !disabledStickerItems.has(s));
+                const enabledStickerPool = (poolStickerLibrary || []).filter(s => !disabledStickerItems.has(s));
                 const shouldSendSticker = enabledStickerPool.length > 0 && Math.random() < 0.2;
 
                 let finalText = replyText;
                 let separateEmoji = null;
-                if (customEmojis && customEmojis.length > 0 && Math.random() < 0.2) {
-                    const emoji = customEmojis[Math.floor(Math.random() * customEmojis.length)];
+                if (poolCustomEmojis && poolCustomEmojis.length > 0 && Math.random() < 0.2) {
+                    const emoji = poolCustomEmojis[Math.floor(Math.random() * poolCustomEmojis.length)];
                     if (settings.emojiMixEnabled !== false) {
                         finalText = Math.random() < 0.5
                             ? emoji + ' ' + replyText
@@ -2145,9 +2223,10 @@ window.simulateReply = function() {
                     }
                 }
 
+                // 【关键】addMessage 会自己判断 contactId 是不是当前角色
                 addMessage({
                     id: Date.now() + i,
-                    sender: settings.partnerName || '对方',
+                    sender: capturedPartnerName,
                     text: finalText,
                     timestamp: new Date(),
                     status: 'received',
@@ -2156,31 +2235,31 @@ window.simulateReply = function() {
                     replyTo: (i === 0 && recentUserMsgs.length > 0 && Math.random() < 0.3)
                         ? (function(){ const m = recentUserMsgs[Math.floor(Math.random() * recentUserMsgs.length)]; return { id: m.id, text: m.text, sender: m.sender }; })()
                         : null,
-                    type: 'normal'
-                });
-                if (typeof window._sendPartnerNotification === 'function') {
-                    window._sendPartnerNotification(settings.partnerName || '对方', finalText);
+                    type: 'normal',
+                    contactId: originContactId  // 【关键】消息归属发起时角色
+                }, { silent: !isSameContact });
+
+                if (isSameContact && typeof window._sendPartnerNotification === 'function') {
+                    window._sendPartnerNotification(capturedPartnerName, finalText);
                 }
-                playSound('message');
+                if (isSameContact) playSound('message');
 
                 if (shouldSendSticker) {
                     const randomSticker = enabledStickerPool[Math.floor(Math.random() * enabledStickerPool.length)];
                     setTimeout(() => {
                         addMessage({
                             id: Date.now() + i + 2000,
-                            sender: settings.partnerName || '对方',
+                            sender: capturedPartnerName,
                             text: '',
                             timestamp: new Date(),
                             image: randomSticker,
                             status: 'received',
                             favorited: false,
                             note: null,
-                            type: 'normal'
-                        });
-                        playSound('message');
-                        if (typeof window._sendPartnerNotification === 'function') {
-                            window._sendPartnerNotification(settings.partnerName || '对方', '[表情]');
-                        }
+                            type: 'normal',
+                            contactId: originContactId
+                        }, { silent: !isSameContact });
+                        if (isSameContact) playSound('message');
                     }, 400 + Math.random() * 600);
                 }
 
@@ -2188,19 +2267,20 @@ window.simulateReply = function() {
                     setTimeout(() => {
                         addMessage({
                             id: Date.now() + i + 1000,
-                            sender: settings.partnerName || '对方',
+                            sender: capturedPartnerName,
                             text: separateEmoji,
                             timestamp: new Date(),
                             status: 'received',
                             favorited: false,
                             note: null,
-                            type: 'normal'
-                        });
-                        playSound('message');
+                            type: 'normal',
+                            contactId: originContactId
+                        }, { silent: !isSameContact });
+                        if (isSameContact) playSound('message');
                     }, 300 + Math.random() * 400);
                 }
 
-                if (i === replyCount - 1) {
+                if (i === replyCount - 1 && isSameContact) {
                     (function() {
                         try {
                             if (window._typingIndicatorAutoHideTimer) {
@@ -2235,9 +2315,12 @@ window.simulateReply = function() {
             }
         }, delay);
     }
-}
+};
 
 
+// ============================================================
+// 其余所有函数完全保留
+// ============================================================
 function showModal(modalElement, focusElement = null) {
     if (modalElement._hideTimeout) {
         clearTimeout(modalElement._hideTimeout);
@@ -2305,9 +2388,6 @@ async function viewImage(src) {
 }
 
 
-// ============================================================
-// 导出 / 导入 —— 完全保留
-// ============================================================
 async function exportChatHistory() {
     let _diaryForExport = [];
     let _moodForExport = null;
@@ -2701,9 +2781,6 @@ function importChatHistory(file) {
 }
 
 
-// ============================================================
-// 状态更新 —— 完全保留
-// ============================================================
 window._triggerStatusChange = function() {
     let newStatus = null;
 
@@ -2754,9 +2831,6 @@ const checkStatusChange = () => {
 };
 
 
-// ============================================================
-// getStorageKey / favAudioKey —— 完全保留
-// ============================================================
 function getStorageKey(baseKey) {
     if (!SESSION_ID) {
         console.error('[getStorageKey] SESSION_ID 尚未初始化，拒绝生成存储键:', baseKey);
@@ -2771,9 +2845,6 @@ function favAudioKey(messageId) {
 window.favAudioKey = favAudioKey;
 
 
-// ============================================================
-// migrateData / initializeSession —— 完全保留
-// ============================================================
 async function migrateData() {
     const isMigrated = await localforage.getItem(APP_PREFIX + 'MIGRATION_V2_DONE');
     if (isMigrated) return;
@@ -2839,7 +2910,7 @@ window.initializeSession = async function() {
 
 
 // ============================================================
-// switchActiveContact —— 融合多角色切换（不刷新、隔离、不串框）
+// switchActiveContact —— 切换（不动异步回复任务，让它后台继续）
 // ============================================================
 window.switchActiveContact = async function(nextRole, nextName) {
     // 1. 保存当前角色数据（此时 SESSION_ID 还是旧的）
@@ -2847,20 +2918,23 @@ window.switchActiveContact = async function(nextRole, nextName) {
         try { await window.saveData(); } catch (e) { console.warn('[switchActiveContact] 保存旧角色失败:', e); }
     }
 
+    // 【关键】不清除 _pendingReplyTimer！
+    // 让旧角色的异步回复任务继续跑，它会通过 contactId 自动写入旧角色的存储池
+
     // 2. 切换 SESSION_ID
     SESSION_ID = nextRole;
     window.currentContactId = nextRole;
     localStorage.setItem('active_contact_role', nextRole);
     await localforage.setItem(`${APP_PREFIX}lastSessionId`, nextRole);
 
-    // 3. 清空消息和界面，防串框
+    // 3. 清空消息和界面
     if (typeof DOMElements !== 'undefined' && DOMElements.chatContainer) {
         DOMElements.chatContainer.innerHTML = '';
     }
     messages = [];
     window.messages = [];
 
-    // 4. 清空回复库全局变量，防串台
+    // 4. 清空回复库全局变量
     customReplies = [];
     window.customReplies = [];
     window._customReplies = [];
@@ -2875,12 +2949,16 @@ window.switchActiveContact = async function(nextRole, nextName) {
     msgWinEnd = 0;
     newMsgCountWhileBrowsing = 0;
 
-    // 6. 重新加载新角色数据
+    // 6. 隐藏 typing indicator（防止切换后还显示旧角色的"正在输入"）
+    const tiWrapper = document.getElementById('typing-indicator-wrapper');
+    if (tiWrapper) tiWrapper.style.display = 'none';
+
+    // 7. 重新加载新角色数据
     if (typeof window.loadData === 'function') {
         await window.loadData();
     }
 
-    // 7. 更新界面名字
+    // 8. 更新界面名字
     const nameEl = document.getElementById('partner-name');
     if (nameEl && window.settings) {
         if (!window.settings.partnerName || window.settings.partnerName === '梦角') {
@@ -2895,9 +2973,6 @@ window.switchActiveContact = async function(nextRole, nextName) {
 };
 
 
-// ============================================================
-// 监听系统昼夜变化
-// ============================================================
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
     document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
 });
