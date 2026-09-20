@@ -25,6 +25,102 @@
     <style id="css-live-preview-style"></style>
 </head>
 <body>
+<!-- ============================================
+     解锁页（welcome 动画加载前 · 输入钥匙进入）
+     · 默认钥匙：1225（搜索 UNLOCK_KEY 可修改）
+     · REMEMBER_UNLOCK=true 时解锁一次后记住，刷新不再要求
+============================================ -->
+<div id="unlock-screen">
+    <style>
+        #unlock-screen{position:fixed;inset:0;z-index:99999;background:#ffffff;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity 0.6s ease,visibility 0.6s ease;font-family:var(--font-family,'Noto Serif SC',serif);}
+        #unlock-screen.unlock-hidden{opacity:0;visibility:hidden;pointer-events:none;}
+        .unlock-icon{width:88px;height:88px;border-radius:50%;background:#f2f2f2;display:flex;align-items:center;justify-content:center;margin-bottom:28px;color:#9b9b9b;font-size:34px;}
+        .unlock-title{font-size:24px;font-weight:700;letter-spacing:5px;color:#2f2f2f;text-align:center;}
+        .unlock-sub{font-size:14px;color:#8a8a8a;margin-top:14px;text-align:center;letter-spacing:1px;}
+        .unlock-form{display:flex;align-items:center;gap:10px;margin-top:38px;}
+        .unlock-input{width:240px;padding:12px 20px;border:1px solid #e2e2e2;border-radius:30px;font-size:14px;color:#333;outline:none;background:#fff;letter-spacing:0.5px;box-sizing:border-box;font-family:inherit;}
+        .unlock-input::placeholder{color:#bdbdbd;}
+        .unlock-input:focus{border-color:#4a4a4a;}
+        .unlock-submit{width:48px;height:48px;border-radius:50%;border:none;background:#2f2f2f;color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.2s,transform 0.15s;flex-shrink:0;}
+        .unlock-submit:hover{background:#555;}
+        .unlock-submit:active{transform:scale(0.94);}
+        .unlock-error{font-size:12px;color:#e05a47;margin-top:16px;min-height:16px;opacity:0;transition:opacity 0.2s;}
+        .unlock-error.show{opacity:1;}
+        .unlock-shake{animation:unlockShake 0.4s;}
+        @keyframes unlockShake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
+    </style>
+    <div class="unlock-icon"><i class="fas fa-lock"></i></div>
+    <div class="unlock-title">CHAMBER LOCKED</div>
+    <div class="unlock-sub">请输入解密钥匙以开启。</div>
+    <div class="unlock-form">
+        <input class="unlock-input" id="unlock-input" type="text" placeholder="Enter key..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+        <button class="unlock-submit" id="unlock-submit" type="button"><i class="fas fa-arrow-right"></i></button>
+    </div>
+    <div class="unlock-error" id="unlock-error">钥匙不对，再试一次</div>
+</div>
+<script>
+(function() {
+    'use strict';
+    // ★★★ 解锁钥匙（改成你自己的） ★★★
+    var UNLOCK_KEY = '520';
+    // 解锁记录键名
+    var UNLOCK_STORE_KEY = 'site_unlock_passed';
+    // true = 解锁一次后记住，刷新不再要求；false = 每次打开都要输入
+    var REMEMBER_UNLOCK = true;
+
+    function unlockDone() {
+        var screen = document.getElementById('unlock-screen');
+        if (screen) screen.classList.add('unlock-hidden');
+        document.body.style.overflow = '';
+        if (REMEMBER_UNLOCK) {
+            try { localStorage.setItem(UNLOCK_STORE_KEY, '1'); } catch (e) {}
+        }
+    }
+    function unlockFail() {
+        var screen = document.getElementById('unlock-screen');
+        var err = document.getElementById('unlock-error');
+        if (screen) {
+            screen.classList.remove('unlock-shake');
+            void screen.offsetWidth;
+            screen.classList.add('unlock-shake');
+        }
+        if (err) err.classList.add('show');
+        setTimeout(function() {
+            if (screen) screen.classList.remove('unlock-shake');
+        }, 450);
+    }
+    function tryUnlock() {
+        var input = document.getElementById('unlock-input');
+        var val = input ? input.value.trim() : '';
+        if (val === UNLOCK_KEY) {
+            unlockDone();
+        } else {
+            unlockFail();
+            if (input) { input.value = ''; input.focus(); }
+        }
+    }
+    function initUnlock() {
+        if (REMEMBER_UNLOCK) {
+            try {
+                if (localStorage.getItem(UNLOCK_STORE_KEY) === '1') { unlockDone(); return; }
+            } catch (e) {}
+        }
+        document.body.style.overflow = 'hidden';
+        var input = document.getElementById('unlock-input');
+        var submit = document.getElementById('unlock-submit');
+        if (submit) submit.addEventListener('click', tryUnlock);
+        if (input) {
+            input.addEventListener('keydown', function(e) { if (e.key === 'Enter') tryUnlock(); });
+            setTimeout(function() { input.focus(); }, 300);
+        }
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initUnlock);
+    } else {
+        initUnlock();
+    }
+})();
+</script>    
 <div id="splash-declaration">
     <div class="splash-bg-stars" id="splash-stars"></div>
     <div class="splash-glow-1"></div>
